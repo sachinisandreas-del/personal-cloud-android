@@ -1,17 +1,27 @@
 package com.andreas.personalcloudclient; // Make sure this matches your package name
 
-import androidx.activity.result.ActivityResultLauncher;
-import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.NonNull;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.PopupMenu;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 
 import android.app.Activity;
+import android.content.ContentValues;
 import android.content.Intent;
+import android.database.Cursor;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.MediaStore;
+import android.provider.OpenableColumns;
 import android.util.Log;
 import android.view.View;
+import android.webkit.MimeTypeMap;
 import android.widget.Button;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -27,36 +37,28 @@ import java.util.List;
 import okhttp3.MediaType;
 import okhttp3.MultipartBody;
 import okhttp3.RequestBody;
+import okhttp3.ResponseBody;
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
 
-// 1. IMPLEMENT THE INTERFACE
-// This tells Java that MainActivity promises to handle the click events defined in our adapter.
 public class MainActivity extends AppCompatActivity implements FileAdapter.OnFileClickListener {
 
     private static final String TAG = "MainActivity";
 
-    // UI Components
+    // UI Components & API Service
     private RecyclerView recyclerView;
     private FileAdapter fileAdapter;
     private Button selectFileButton;
     private ProgressBar progressBar;
     private TextView emptyTextView;
-
-    // API Service
     private ApiService apiService;
 
-    // Launcher for the file picker
     private final ActivityResultLauncher<Intent> filePickerLauncher = registerForActivityResult(
         new ActivityResultContracts.StartActivityForResult(),
         result -> {
-            if (result.getResultCode() == Activity.RESULT_OK) {
-                Intent data = result.getData();
-                if (data != null) {
-                    Uri fileUri = data.getData();
-                    uploadFile(fileUri);
-                }
+            if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+                uploadFile(result.getData().getData());
             } else {
                 Toast.makeText(this, "File selection cancelled", Toast.LENGTH_SHORT).show();
             }
@@ -67,22 +69,17 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // Initialize API Service
+        // Initialize components
         apiService = RetrofitClient.getClient().create(ApiService.class);
-
-        // Find views by their IDs
         selectFileButton = findViewById(R.id.buttonSelectFile);
         progressBar = findViewById(R.id.progressBar);
         emptyTextView = findViewById(R.id.textViewEmpty);
         recyclerView = findViewById(R.id.recyclerViewFiles);
-
-        // Setup RecyclerView (this now includes setting the listener)
         setupRecyclerView();
-
-        // Setup Listeners for the upload button
         selectFileButton.setOnClickListener(v -> openFilePicker());
 
-        // Initial fetch of the file list from the server
+        // With modern storage, we don't need to ask for permissions at startup.
+        // We can directly fetch the file list.
         fetchFileList();
     }
 
@@ -90,105 +87,200 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
         fileAdapter = new FileAdapter();
         recyclerView.setAdapter(fileAdapter);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
-
-        // 2. SET THE LISTENER
-        // This is the crucial connection. We are telling the adapter,
-        // "When a click happens, notify me (this activity)."
         fileAdapter.setOnFileClickListener(this);
     }
 
-    // 3. FULFILL THE PROMISE
-    // Because we implemented the interface, we MUST provide this method.
-    // This is the code that will run when the options button on any list item is clicked.
     @Override
     public void onFileOptionsClicked(String filename) {
-        // For now, we just show a message to confirm it's working.
-        Toast.makeText(this, "Options clicked for: " + filename, Toast.LENGTH_SHORT).show();
-        // Our NEXT STEP will be to replace this Toast with a real popup menu.
+        View view = findViewByFileName(filename);
+        if (view == null) return;
+
+        PopupMenu popup = new PopupMenu(this, view);
+        popup.getMenuInflater().inflate(R.menu.file_options_menu, popup.getMenu());
+        popup.setOnMenuItemClickListener(item -> {
+            int itemId = item.getItemId();
+            if (itemId == R.id.action_download) {
+                downloadFileFromServer(filename);
+                return true;
+            } else if (itemId == R.id.action_delete) {
+                new AlertDialog.Builder(this)
+                    .setTitle("Delete File")
+                    .setMessage("Are you sure you want to delete '" + filename + "'?")
+                    .setPositiveButton("Delete", (dialog, which) -> deleteFileFromServer(filename))
+                    .setNegativeButton("Cancel", null)
+                    .show();
+                return true;
+            }
+            return false;
+        });
+        popup.show();
     }
+
+    // --- API Call Methods ---
 
     private void fetchFileList() {
         showLoading(true);
         Call<List<String>> call = apiService.getFiles();
-
         call.enqueue(new Callback<List<String>>() {
             @Override
-            public void onResponse(Call<List<String>> call, Response<List<String>> response) {
+            public void onResponse(@NonNull Call<List<String>> call, @NonNull Response<List<String>> response) {
                 showLoading(false);
                 if (response.isSuccessful() && response.body() != null) {
-                    List<String> files = response.body();
-                    if (files.isEmpty()) {
-                        showEmptyView(true);
-                    } else {
-                        showEmptyView(false);
-                        fileAdapter.setFiles(files);
-                    }
+                    fileAdapter.setFiles(response.body());
+                    showEmptyView(response.body().isEmpty());
                 } else {
-                    Toast.makeText(MainActivity.this, "Failed to fetch files", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(MainActivity.this, "Failed to fetch files. Check server.", Toast.LENGTH_LONG).show();
                 }
             }
-
             @Override
-            public void onFailure(Call<List<String>> call, Throwable t) {
+            public void onFailure(@NonNull Call<List<String>> call, @NonNull Throwable t) {
                 showLoading(false);
-                Toast.makeText(MainActivity.this, "Error: " + t.getMessage(), Toast.LENGTH_LONG).show();
+                Toast.makeText(MainActivity.this, "Network Error: " + t.getMessage(), Toast.LENGTH_LONG).show();
             }
         });
     }
 
     private void uploadFile(Uri fileUri) {
-        File file = createTempFileFromUri(fileUri);
-        if (file == null) {
+        File tempFile = createTempFileFromUri(fileUri);
+        if (tempFile == null) {
             Toast.makeText(this, "Failed to read file", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        RequestBody requestFile = RequestBody.create(MediaType.parse(getContentResolver().getType(fileUri)), file);
-        MultipartBody.Part body = MultipartBody.Part.createFormData("file", file.getName(), requestFile);
+        String originalFileName = getFileNameFromUri(fileUri);
+        RequestBody requestFile = RequestBody.create(MediaType.parse(getContentResolver().getType(fileUri)), tempFile);
+        MultipartBody.Part body = MultipartBody.Part.createFormData("file", originalFileName, requestFile);
 
         showLoading(true);
         Call<UploadResponse> call = apiService.uploadFile(body);
-
         call.enqueue(new Callback<UploadResponse>() {
             @Override
-            public void onResponse(Call<UploadResponse> call, Response<UploadResponse> response) {
-                showLoading(false);
+            public void onResponse(@NonNull Call<UploadResponse> call, @NonNull Response<UploadResponse> response) {
+                fetchFileList();
                 if (response.isSuccessful()) {
                     Toast.makeText(MainActivity.this, "Upload successful!", Toast.LENGTH_SHORT).show();
-                    fetchFileList(); // Refresh the file list after a successful upload
                 } else {
                     Toast.makeText(MainActivity.this, "Upload failed. Code: " + response.code(), Toast.LENGTH_SHORT).show();
                 }
             }
-
             @Override
-            public void onFailure(Call<UploadResponse> call, Throwable t) {
-                showLoading(false);
+            public void onFailure(@NonNull Call<UploadResponse> call, @NonNull Throwable t) {
+                fetchFileList();
                 Toast.makeText(MainActivity.this, "Upload error: " + t.getMessage(), Toast.LENGTH_LONG).show();
             }
         });
     }
 
-    // --- UI Helper Methods ---
-    private void showLoading(boolean isLoading) {
-        if (isLoading) {
-            progressBar.setVisibility(View.VISIBLE);
-            recyclerView.setVisibility(View.GONE);
-            emptyTextView.setVisibility(View.GONE);
-        } else {
-            progressBar.setVisibility(View.GONE);
-            recyclerView.setVisibility(View.VISIBLE);
+    private void deleteFileFromServer(String filename) {
+        showLoading(true);
+        Call<ResponseBody> call = apiService.deleteFile(filename);
+        call.enqueue(new Callback<ResponseBody>() {
+            @Override
+            public void onResponse(@NonNull Call<ResponseBody> call, @NonNull Response<ResponseBody> response) {
+                fetchFileList();
+                if (response.isSuccessful()) {
+                    Toast.makeText(MainActivity.this, "'" + filename + "' deleted", Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(MainActivity.this, "Delete failed. Code: " + response.code(), Toast.LENGTH_SHORT).show();
+                }
+            }
+            @Override
+            public void onFailure(@NonNull Call<ResponseBody> call, @NonNull Throwable t) {
+                fetchFileList();
+                Toast.makeText(MainActivity.this, "Delete error: " + t.getMessage(), Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
+    private void downloadFileFromServer(String filename) {
+        Toast.makeText(this, "Starting download...", Toast.LENGTH_SHORT).show();
+        Call<ResponseBody> call = apiService.downloadFile(filename);
+        call.enqueue(new Callback<ResponseBody>() {
+            @Override
+            public void onResponse(@NonNull Call<ResponseBody> call, @NonNull Response<ResponseBody> response) {
+                if (response.isSuccessful() && response.body() != null) {
+                    new Thread(() -> {
+                        boolean success = writeResponseBodyToDisk(response.body(), filename);
+                        runOnUiThread(() -> {
+                            if (success) {
+                                Toast.makeText(MainActivity.this, filename + " downloaded.", Toast.LENGTH_LONG).show();
+                            } else {
+                                Toast.makeText(MainActivity.this, "Failed to save file.", Toast.LENGTH_SHORT).show();
+                            }
+                        });
+                    }).start();
+                } else {
+                    Toast.makeText(MainActivity.this, "Download failed. Code: " + response.code(), Toast.LENGTH_SHORT).show();
+                }
+            }
+            @Override
+            public void onFailure(@NonNull Call<ResponseBody> call, @NonNull Throwable t) {
+                Toast.makeText(MainActivity.this, "Download error: " + t.getMessage(), Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
+    // --- MODERN STORAGE & FILE HELPER METHODS ---
+
+    private boolean writeResponseBodyToDisk(ResponseBody body, String filename) {
+        try {
+            // Use MediaStore to save to the public Downloads directory
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.MediaColumns.DISPLAY_NAME, filename);
+            values.put(MediaStore.MediaColumns.MIME_TYPE, getMimeType(filename));
+            // Scoped storage for Android 10 (Q) and above
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
+            }
+
+            Uri uri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+            if (uri == null) {
+                Log.e(TAG, "Failed to create new MediaStore record.");
+                return false;
+            }
+
+            try (OutputStream outputStream = getContentResolver().openOutputStream(uri);
+                 InputStream inputStream = body.byteStream()) {
+
+                if (outputStream == null) {
+                    Log.e(TAG, "Failed to open output stream for MediaStore Uri.");
+                    return false;
+                }
+
+                byte[] buffer = new byte[4096];
+                int bytesRead;
+                while ((bytesRead = inputStream.read(buffer)) != -1) {
+                    outputStream.write(buffer, 0, bytesRead);
+                }
+                outputStream.flush();
+                return true;
+            }
+
+        } catch (IOException e) {
+            Log.e(TAG, "Failed to save downloaded file", e);
+            return false;
         }
     }
 
-    private void showEmptyView(boolean show) {
-        if (show) {
-            emptyTextView.setVisibility(View.VISIBLE);
-            recyclerView.setVisibility(View.GONE);
-        } else {
-            emptyTextView.setVisibility(View.GONE);
-            recyclerView.setVisibility(View.VISIBLE);
+    // Helper to guess the MIME type from the file extension
+    private String getMimeType(String filename) {
+        String extension = MimeTypeMap.getFileExtensionFromUrl(filename);
+        if (extension != null) {
+            return MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension);
         }
+        return "application/octet-stream"; // A generic binary stream
+    }
+
+    // (Other helper methods remain the same)
+    private void showLoading(boolean isLoading) {
+        progressBar.setVisibility(isLoading ? View.VISIBLE : View.GONE);
+        recyclerView.setVisibility(isLoading ? View.GONE : View.VISIBLE);
+        if (isLoading) emptyTextView.setVisibility(View.GONE);
+    }
+
+    private void showEmptyView(boolean show) {
+        emptyTextView.setVisibility(show ? View.VISIBLE : View.GONE);
+        recyclerView.setVisibility(show ? View.GONE : View.VISIBLE);
     }
 
     private void openFilePicker() {
@@ -198,27 +290,47 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
         filePickerLauncher.launch(intent);
     }
 
-    // --- File Helper Method ---
+    private View findViewByFileName(String filename) {
+        for (int i = 0; i < fileAdapter.getItemCount(); i++) {
+            FileAdapter.FileViewHolder holder = (FileAdapter.FileViewHolder) recyclerView.findViewHolderForAdapterPosition(i);
+            if (holder != null && holder.fileNameTextView.getText().toString().equals(filename)) {
+                return holder.optionsButton;
+            }
+        }
+        return null;
+    }
+
+    private String getFileNameFromUri(Uri uri) {
+        String fileName = null;
+        try (Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                int nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                if (nameIndex != -1) {
+                    fileName = cursor.getString(nameIndex);
+                }
+            }
+        }
+        return (fileName != null) ? fileName : "upload_" + System.currentTimeMillis();
+    }
+
     private File createTempFileFromUri(Uri uri) {
-        File tempFile = null;
         try {
             InputStream inputStream = getContentResolver().openInputStream(uri);
-            if (inputStream != null) {
-                tempFile = new File(getCacheDir(), "upload_temp_file");
-                try (OutputStream outputStream = new FileOutputStream(tempFile)) {
-                    byte[] buffer = new byte[4 * 1024];
-                    int read;
-                    while ((read = inputStream.read(buffer)) != -1) {
-                        outputStream.write(buffer, 0, read);
-                    }
-                    outputStream.flush();
+            if(inputStream == null) return null;
+            File tempFile = new File(getCacheDir(), "upload_temp.tmp");
+            try (OutputStream outputStream = new FileOutputStream(tempFile)) {
+                byte[] buffer = new byte[4 * 1024];
+                int read;
+                while ((read = inputStream.read(buffer)) != -1) {
+                    outputStream.write(buffer, 0, read);
                 }
-                inputStream.close();
+                outputStream.flush();
             }
+            inputStream.close();
+            return tempFile;
         } catch (IOException e) {
             Log.e(TAG, "Failed to create temp file from Uri", e);
             return null;
         }
-        return tempFile;
     }
 }
