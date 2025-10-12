@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:padding="16dp"
+    android:gravity="center_vertical"
+    android:background="?android:attr/selectableItemBackground"> <!-- Adds a nice ripple effect on click -->
+
+    <TextView
+        android:id="@+id/textViewFileName"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:text="example_filename.jpg"
+        android:textSize="16sp"
+        android:textColor="@android:color/black" />
+
+    <!-- We will use this button later for a pop-up menu (delete) -->
+    <ImageButton
+        android:id="@+id/buttonOptions"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:src="@android:drawable/ic_menu_more"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Options" />
+
+</LinearLayout>
+
+

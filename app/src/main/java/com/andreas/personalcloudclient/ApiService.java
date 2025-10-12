@@ -1,16 +1,32 @@
 package com.andreas.personalcloudclient;
 
+import java.util.List;
 import okhttp3.MultipartBody;
+import okhttp3.ResponseBody; // <-- NEW: Import for file streams
 import retrofit2.Call;
+import retrofit2.http.DELETE; // <-- NEW
+import retrofit2.http.GET;
 import retrofit2.http.Multipart;
 import retrofit2.http.POST;
 import retrofit2.http.Part;
+import retrofit2.http.Path;     // <-- NEW
+import retrofit2.http.Streaming; // <-- NEW
 
 public interface ApiService {
 
-    // This defines our '/upload' endpoint
     @Multipart
-    @POST("upload") // The path of the endpoint (relative to the BASE_URL)
+    @POST("upload")
     Call<UploadResponse> uploadFile(@Part MultipartBody.Part file);
 
+    @GET("files")
+    Call<List<String>> getFiles();
+
+    // --- NEW: Endpoint to download a file ---
+    @GET("download/{filename}")
+    @Streaming // Crucial for downloading files efficiently
+    Call<ResponseBody> downloadFile(@Path("filename") String filename);
+
+    // --- NEW: Endpoint to delete a file ---
+    @DELETE("delete/{filename}")
+    Call<ResponseBody> deleteFile(@Path("filename") String filename);
 }
