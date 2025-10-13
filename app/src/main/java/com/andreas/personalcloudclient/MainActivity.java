@@ -69,7 +69,6 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // Initialize components
         apiService = RetrofitClient.getClient().create(ApiService.class);
         selectFileButton = findViewById(R.id.buttonSelectFile);
         progressBar = findViewById(R.id.progressBar);
@@ -78,8 +77,6 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
         setupRecyclerView();
         selectFileButton.setOnClickListener(v -> openFilePicker());
 
-        // With modern storage, we don't need to ask for permissions at startup.
-        // We can directly fetch the file list.
         fetchFileList();
     }
 
@@ -220,18 +217,19 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
         });
     }
 
-    // --- MODERN STORAGE & FILE HELPER METHODS ---
+    // --- MODERN STORAGE & FILE HELPER METHODS (WITH FIX) ---
 
     private boolean writeResponseBodyToDisk(ResponseBody body, String filename) {
         try {
-            // Use MediaStore to save to the public Downloads directory
             ContentValues values = new ContentValues();
             values.put(MediaStore.MediaColumns.DISPLAY_NAME, filename);
+
+            // --- THIS IS THE FIX ---
+            // We get the MIME type from the filename and add it to the MediaStore record.
             values.put(MediaStore.MediaColumns.MIME_TYPE, getMimeType(filename));
-            // Scoped storage for Android 10 (Q) and above
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
-            }
+            // ---------------------
+
+            values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
 
             Uri uri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
             if (uri == null) {
@@ -262,16 +260,18 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
         }
     }
 
-    // Helper to guess the MIME type from the file extension
     private String getMimeType(String filename) {
         String extension = MimeTypeMap.getFileExtensionFromUrl(filename);
         if (extension != null) {
-            return MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension);
+            String mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension.toLowerCase());
+            // Return a generic stream type if the MIME type is unknown
+            return mimeType != null ? mimeType : "application/octet-stream";
         }
-        return "application/octet-stream"; // A generic binary stream
+        return "application/octet-stream";
     }
 
-    // (Other helper methods remain the same)
+    // --- Other Helper Methods (Unchanged) ---
+
     private void showLoading(boolean isLoading) {
         progressBar.setVisibility(isLoading ? View.VISIBLE : View.GONE);
         recyclerView.setVisibility(isLoading ? View.GONE : View.VISIBLE);
