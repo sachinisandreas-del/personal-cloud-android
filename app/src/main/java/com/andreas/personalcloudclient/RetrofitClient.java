@@ -7,29 +7,38 @@ import retrofit2.converter.gson.GsonConverterFactory;
 
 public class RetrofitClient {
 
-    // IMPORTANT: Replace this with your server's actual IP address
     private static final String BASE_URL = "http://192.168.100.51:5000/";
 
     private static Retrofit retrofit = null;
 
     public static Retrofit getClient() {
         if (retrofit == null) {
-            // Create a logging interceptor to see request and response logs
             HttpLoggingInterceptor loggingInterceptor = new HttpLoggingInterceptor();
             loggingInterceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
 
-            // Create an OkHttpClient and add the interceptor
             OkHttpClient client = new OkHttpClient.Builder()
                 .addInterceptor(loggingInterceptor)
                 .build();
 
-            // Build the Retrofit instance
             retrofit = new Retrofit.Builder()
                 .baseUrl(BASE_URL)
-                .client(client) // Set the custom OkHttpClient
-                .addConverterFactory(GsonConverterFactory.create()) // Use Gson for JSON parsing
+                .client(client)
+                .addConverterFactory(GsonConverterFactory.create())
                 .build();
         }
         return retrofit;
+    }
+
+    public static ApiService getDownloadApiService(DownloadProgressListener listener) {
+        OkHttpClient downloadClient = new OkHttpClient.Builder()
+            .addInterceptor(new DownloadProgressInterceptor(listener)) // This line will now work
+            .build();
+
+        Retrofit downloadRetrofit = new Retrofit.Builder()
+            .baseUrl(BASE_URL)
+            .client(downloadClient)
+            .build();
+
+        return downloadRetrofit.create(ApiService.class);
     }
 }
