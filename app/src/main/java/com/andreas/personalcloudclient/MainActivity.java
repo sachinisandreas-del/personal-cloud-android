@@ -1,4 +1,4 @@
-package com.andreas.personalcloudclient; // Make sure this matches your package name
+package com.andreas.personalcloudclient;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
@@ -16,6 +16,7 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import android.Manifest;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.content.ActivityNotFoundException;
 import android.content.ContentValues;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -62,7 +63,7 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
     private Button selectFileButton;
     private ProgressBar progressBar;
     private TextView emptyTextView;
-    private ApiService apiService; // Standard API service
+    private ApiService apiService;
 
     private final ActivityResultLauncher<Intent> filePickerLauncher = registerForActivityResult(
         new ActivityResultContracts.StartActivityForResult(),
@@ -90,112 +91,32 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
         fetchFileList();
     }
 
-    // --- DOWNLOAD METHOD (USING THE INTERCEPTOR) ---
-    private void downloadFileFromServer(String filename) {
-        final int notificationId = (int) System.currentTimeMillis();
-        final NotificationManagerCompat notificationManager = NotificationManagerCompat.from(this);
-        final NotificationCompat.Builder builder = new NotificationCompat.Builder(this, DOWNLOAD_CHANNEL_ID)
-            .setContentTitle(filename)
-            .setContentText("Download starting...")
-            .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setOngoing(true);
+    @Override
+    public void onFileClicked(FileMetadata file) {
+        String filename = file.getFilename();
+        String fileType = file.getFileType();
+        String fileUrl = RetrofitClient.BASE_URL + "download/" + filename;
 
-        // This listener is implemented here and runs on the Main Thread thanks to the Handler in the interceptor
-        DownloadProgressListener progressListener = progress -> {
-            builder.setProgress(100, progress, false);
-            builder.setContentText(progress + "%");
-            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-                notificationManager.notify(notificationId, builder.build());
+        if ("image".equals(fileType)) {
+            Intent intent = new Intent(this, ImageViewerActivity.class);
+            intent.putExtra(ImageViewerActivity.EXTRA_IMAGE_URL, fileUrl);
+            startActivity(intent);
+        } else {
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+            intent.setData(Uri.parse(fileUrl));
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+            try {
+                startActivity(intent);
+            } catch (ActivityNotFoundException e) {
+                Toast.makeText(this, "No app found to open this file type", Toast.LENGTH_LONG).show();
             }
-        };
-
-        // Get the special download client that uses our interceptor
-        ApiService downloadService = RetrofitClient.getDownloadApiService(progressListener);
-
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-            notificationManager.notify(notificationId, builder.build());
-        }
-
-        downloadService.downloadFile(filename).enqueue(new Callback<ResponseBody>() {
-            @Override
-            public void onResponse(@NonNull Call<ResponseBody> call, @NonNull Response<ResponseBody> response) {
-                builder.setOngoing(false); // Make the notification dismissable
-                if (response.isSuccessful() && response.body() != null) {
-                    // Start a simple background thread ONLY for writing the file to disk
-                    new Thread(() -> {
-                        boolean success = writeResponseBodyToDisk(response.body(), filename);
-                        // Post the final UI update back to the main thread
-                        new Handler(Looper.getMainLooper()).post(() -> {
-                            if (success) {
-                                builder.setContentText("Download complete")
-                                    .setProgress(0, 0, false)
-                                    .setSmallIcon(android.R.drawable.stat_sys_download_done);
-                                Toast.makeText(MainActivity.this, filename + " downloaded.", Toast.LENGTH_LONG).show();
-                            } else {
-                                builder.setContentText("Download failed: Error writing file")
-                                    .setProgress(0, 0, false);
-                                Toast.makeText(MainActivity.this, "Failed to save file.", Toast.LENGTH_SHORT).show();
-                            }
-                            if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-                                notificationManager.notify(notificationId, builder.build());
-                            }
-                        });
-                    }).start();
-                } else {
-                    // Handle HTTP error
-                    builder.setContentText("Download failed: " + response.code()).setProgress(0, 0, false);
-                    if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-                        notificationManager.notify(notificationId, builder.build());
-                    }
-                    Toast.makeText(MainActivity.this, "Download failed. Code: " + response.code(), Toast.LENGTH_SHORT).show();
-                }
-            }
-
-            @Override
-            public void onFailure(@NonNull Call<ResponseBody> call, @NonNull Throwable t) {
-                // Handle network failure
-                builder.setOngoing(false);
-                builder.setContentText("Download failed: " + t.getMessage()).setProgress(0, 0, false);
-                if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-                    notificationManager.notify(notificationId, builder.build());
-                }
-                Toast.makeText(MainActivity.this, "Download error: " + t.getMessage(), Toast.LENGTH_LONG).show();
-            }
-        });
-    }
-
-    // --- This method is now very simple and does NOT know about progress ---
-    private boolean writeResponseBodyToDisk(ResponseBody body, String filename) {
-        try {
-            ContentValues values = new ContentValues();
-            values.put(MediaStore.MediaColumns.DISPLAY_NAME, filename);
-            values.put(MediaStore.MediaColumns.MIME_TYPE, getMimeType(filename));
-            values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
-            Uri uri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
-            if (uri == null) return false;
-
-            try (OutputStream outputStream = getContentResolver().openOutputStream(uri);
-                 InputStream inputStream = body.byteStream()) {
-                if (outputStream == null) return false;
-                byte[] buffer = new byte[4096];
-                int bytesRead;
-                while ((bytesRead = inputStream.read(buffer)) != -1) {
-                    outputStream.write(buffer, 0, bytesRead);
-                }
-                outputStream.flush();
-                return true;
-            }
-        } catch (IOException e) {
-            Log.e(TAG, "Failed to save downloaded file", e);
-            return false;
         }
     }
-
-    // --- The rest of the file is unchanged ---
 
     @Override
-    public void onFileOptionsClicked(String filename) {
+    public void onFileOptionsClicked(FileMetadata file) {
+        String filename = file.getFilename();
         View view = findViewByFileName(filename);
         if (view == null) return;
 
@@ -218,6 +139,30 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
             return false;
         });
         popup.show();
+    }
+
+    private void fetchFileList() {
+        showLoading(true);
+        Call<List<FileMetadata>> call = apiService.getFiles();
+
+        call.enqueue(new Callback<List<FileMetadata>>() {
+            @Override
+            public void onResponse(@NonNull Call<List<FileMetadata>> call, @NonNull Response<List<FileMetadata>> response) {
+                showLoading(false);
+                if (response.isSuccessful() && response.body() != null) {
+                    List<FileMetadata> files = response.body();
+                    fileAdapter.setFiles(files);
+                    showEmptyView(files.isEmpty());
+                } else {
+                    Toast.makeText(MainActivity.this, "Failed to fetch files. Check server.", Toast.LENGTH_LONG).show();
+                }
+            }
+            @Override
+            public void onFailure(@NonNull Call<List<FileMetadata>> call, @NonNull Throwable t) {
+                showLoading(false);
+                Toast.makeText(MainActivity.this, "Network Error: " + t.getMessage(), Toast.LENGTH_LONG).show();
+            }
+        });
     }
 
     private void createNotificationChannel() {
@@ -245,6 +190,77 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
         recyclerView.setAdapter(fileAdapter);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
         fileAdapter.setOnFileClickListener(this);
+    }
+
+    // (The rest of the file is unchanged)
+    private void downloadFileFromServer(String filename) {
+        final int notificationId = (int) System.currentTimeMillis();
+        final NotificationManagerCompat notificationManager = NotificationManagerCompat.from(this);
+        final NotificationCompat.Builder builder = new NotificationCompat.Builder(this, DOWNLOAD_CHANNEL_ID)
+            .setContentTitle(filename)
+            .setContentText("Download starting...")
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true);
+
+        DownloadProgressListener progressListener = progress -> {
+            new Handler(Looper.getMainLooper()).post(() -> {
+                builder.setProgress(100, progress, false);
+                builder.setContentText(progress + "%");
+                if (ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                    notificationManager.notify(notificationId, builder.build());
+                }
+            });
+        };
+
+        ApiService downloadService = RetrofitClient.getDownloadApiService(progressListener);
+
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+            notificationManager.notify(notificationId, builder.build());
+        }
+
+        downloadService.downloadFile(filename).enqueue(new Callback<ResponseBody>() {
+            @Override
+            public void onResponse(@NonNull Call<ResponseBody> call, @NonNull Response<ResponseBody> response) {
+                builder.setOngoing(false);
+                if (response.isSuccessful() && response.body() != null) {
+                    new Thread(() -> {
+                        boolean success = writeResponseBodyToDisk(response.body(), filename);
+                        new Handler(Looper.getMainLooper()).post(() -> {
+                            if (success) {
+                                builder.setContentText("Download complete")
+                                    .setProgress(0, 0, false)
+                                    .setSmallIcon(android.R.drawable.stat_sys_download_done);
+                                Toast.makeText(MainActivity.this, filename + " downloaded.", Toast.LENGTH_LONG).show();
+                            } else {
+                                builder.setContentText("Download failed: Error writing file")
+                                    .setProgress(0, 0, false);
+                                Toast.makeText(MainActivity.this, "Failed to save file.", Toast.LENGTH_SHORT).show();
+                            }
+                            if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                                notificationManager.notify(notificationId, builder.build());
+                            }
+                        });
+                    }).start();
+                } else {
+                    builder.setContentText("Download failed: " + response.code()).setProgress(0, 0, false);
+                    if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                        notificationManager.notify(notificationId, builder.build());
+                    }
+                    Toast.makeText(MainActivity.this, "Download failed. Code: " + response.code(), Toast.LENGTH_SHORT).show();
+                }
+            }
+
+            @Override
+            public void onFailure(@NonNull Call<ResponseBody> call, @NonNull Throwable t) {
+                builder.setOngoing(false);
+                builder.setContentText("Download failed: " + t.getMessage()).setProgress(0, 0, false);
+                if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                    notificationManager.notify(notificationId, builder.build());
+                }
+                Toast.makeText(MainActivity.this, "Download error: " + t.getMessage(), Toast.LENGTH_LONG).show();
+            }
+        });
     }
 
     private void uploadFile(Uri fileUri) {
@@ -317,25 +333,30 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
         });
     }
 
-    private void fetchFileList() {
-        showLoading(true);
-        apiService.getFiles().enqueue(new Callback<List<String>>() {
-            @Override
-            public void onResponse(@NonNull Call<List<String>> call, @NonNull Response<List<String>> response) {
-                showLoading(false);
-                if (response.isSuccessful() && response.body() != null) {
-                    fileAdapter.setFiles(response.body());
-                    showEmptyView(response.body().isEmpty());
-                } else {
-                    Toast.makeText(MainActivity.this, "Failed to fetch files. Check server.", Toast.LENGTH_LONG).show();
+    private boolean writeResponseBodyToDisk(ResponseBody body, String filename) {
+        try {
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.MediaColumns.DISPLAY_NAME, filename);
+            values.put(MediaStore.MediaColumns.MIME_TYPE, getMimeType(filename));
+            values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
+            Uri uri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+            if (uri == null) return false;
+
+            try (OutputStream outputStream = getContentResolver().openOutputStream(uri);
+                 InputStream inputStream = body.byteStream()) {
+                if (outputStream == null) return false;
+                byte[] buffer = new byte[4096];
+                int bytesRead;
+                while ((bytesRead = inputStream.read(buffer)) != -1) {
+                    outputStream.write(buffer, 0, bytesRead);
                 }
+                outputStream.flush();
+                return true;
             }
-            @Override
-            public void onFailure(@NonNull Call<List<String>> call, @NonNull Throwable t) {
-                showLoading(false);
-                Toast.makeText(MainActivity.this, "Network Error: " + t.getMessage(), Toast.LENGTH_LONG).show();
-            }
-        });
+        } catch (IOException e) {
+            Log.e(TAG, "Failed to save downloaded file", e);
+            return false;
+        }
     }
 
     private void deleteFileFromServer(String filename) {

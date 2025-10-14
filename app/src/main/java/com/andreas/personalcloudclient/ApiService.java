@@ -14,8 +14,6 @@ import retrofit2.http.Streaming; // <-- NEW
 import okhttp3.RequestBody;
 import retrofit2.http.Body;
 public interface ApiService {
-
-
     @POST("upload")
     Call<UploadResponse> uploadFile(@Body RequestBody body);
 
@@ -24,7 +22,7 @@ public interface ApiService {
     Call<UploadResponse> uploadFile(@Part MultipartBody.Part file);
 
     @GET("files")
-    Call<List<String>> getFiles();
+    Call<List<FileMetadata>> getFiles();
 
     // --- NEW: Endpoint to download a file ---
     @GET("download/{filename}")
