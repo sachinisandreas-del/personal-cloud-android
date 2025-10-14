@@ -102,15 +102,22 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
             intent.putExtra(ImageViewerActivity.EXTRA_IMAGE_URL, fileUrl);
             startActivity(intent);
         } else {
+            // For non-image files, build a URL for STREAMING
+            String streamUrl = fileUrl + "?view=true";
+
             Intent intent = new Intent(Intent.ACTION_VIEW);
-            intent.setData(Uri.parse(fileUrl));
+
+            // IMPORTANT: We also need to provide the MIME type to the Intent.
+            // This helps Android find the correct app (e.g., a video player) faster.
+            String mimeType = getMimeType(filename);
+            intent.setDataAndType(Uri.parse(streamUrl), mimeType);
+
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
 
             try {
                 startActivity(intent);
             } catch (ActivityNotFoundException e) {
-                Toast.makeText(this, "No app found to open this file type", Toast.LENGTH_LONG).show();
-            }
+                Toast.makeText(this, "No app found to open a " + file.getFileType() + " file.", Toast.LENGTH_LONG).show();            }
         }
     }
 
