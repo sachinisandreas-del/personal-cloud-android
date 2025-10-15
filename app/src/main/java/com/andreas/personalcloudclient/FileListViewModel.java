@@ -1,23 +1,21 @@
 package com.andreas.personalcloudclient;
 
+import android.app.Application;
+import android.net.Uri;
+import androidx.annotation.NonNull;
+import androidx.lifecycle.AndroidViewModel;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
-import androidx.lifecycle.ViewModel;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-import okhttp3.ResponseBody;
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
-
-public class FileListViewModel extends ViewModel {
+// --- It now extends AndroidViewModel to get the Application context ---
+public class FileListViewModel extends AndroidViewModel {
 
     private final FileRepository fileRepository;
 
-    // --- LiveData for UI state ---
     private final MutableLiveData<List<FileMetadata>> _fileList = new MutableLiveData<>();
     public final LiveData<List<FileMetadata>> fileList = _fileList;
 
@@ -27,18 +25,17 @@ public class FileListViewModel extends ViewModel {
     private final MutableLiveData<String> _toastMessage = new MutableLiveData<>();
     public final LiveData<String> toastMessage = _toastMessage;
 
-    // --- LiveData for selection mode ---
     private final MutableLiveData<Set<String>> _selectedItems = new MutableLiveData<>(new HashSet<>());
     public final LiveData<Set<String>> selectedItems = _selectedItems;
 
     private final MutableLiveData<Boolean> _isSelectionModeActive = new MutableLiveData<>(false);
     public final LiveData<Boolean> isSelectionModeActive = _isSelectionModeActive;
 
-    public FileListViewModel() {
-        this.fileRepository = new FileRepository();
+    public FileListViewModel(@NonNull Application application) {
+        super(application);
+        // Pass the application context to the repository
+        this.fileRepository = new FileRepository(application);
     }
-
-    // --- Methods to manage selection ---
 
     public void toggleSelection(String filename) {
         Set<String> currentSelection = _selectedItems.getValue();
@@ -58,8 +55,6 @@ public class FileListViewModel extends ViewModel {
         _selectedItems.setValue(new HashSet<>());
         _isSelectionModeActive.setValue(false);
     }
-
-    // --- Data operation methods ---
 
     public void loadFileList() {
         _isLoading.setValue(true);
@@ -83,10 +78,8 @@ public class FileListViewModel extends ViewModel {
         if (filesToDelete == null || filesToDelete.isEmpty()) return;
 
         _isLoading.setValue(true);
-        // Create a copy for safe iteration
         List<String> filesToDeleteList = new ArrayList<>(filesToDelete);
 
-        // Use a counter to know when the last file is deleted
         final int totalFiles = filesToDeleteList.size();
         final int[] deletedCount = {0};
 
@@ -95,11 +88,10 @@ public class FileListViewModel extends ViewModel {
                 @Override
                 public void onSuccess(String result) {
                     deletedCount[0]++;
-                    // When the last file is deleted, refresh the list and clear selection.
                     if (deletedCount[0] == totalFiles) {
                         _toastMessage.setValue(totalFiles + " file(s) deleted");
                         clearSelection();
-                        loadFileList(); // Reload the list from the server
+                        loadFileList();
                     }
                 }
 
@@ -107,7 +99,6 @@ public class FileListViewModel extends ViewModel {
                 public void onError(String message) {
                     deletedCount[0]++;
                     _toastMessage.setValue("Error deleting " + filename + ": " + message);
-                    // Still refresh the list even if some deletions fail
                     if (deletedCount[0] == totalFiles) {
                         clearSelection();
                         loadFileList();
@@ -115,6 +106,40 @@ public class FileListViewModel extends ViewModel {
                 }
             });
         }
+    }
+
+    // --- NEW: Methods for UI to call ---
+    public void uploadFile(Uri fileUri) {
+        _isLoading.setValue(true);
+        fileRepository.uploadFile(fileUri, new FileRepository.RepositoryCallback<String>() {
+            @Override
+            public void onSuccess(String result) {
+                _toastMessage.setValue(result);
+                loadFileList(); // Refresh the list after successful upload
+            }
+
+            @Override
+            public void onError(String message) {
+                _toastMessage.setValue(message);
+                _isLoading.setValue(false);
+            }
+        });
+    }
+
+    public void downloadFile(String filename) {
+        // We don't need to show a loading spinner, as the notification provides feedback
+        fileRepository.downloadFile(filename, new FileRepository.RepositoryCallback<String>() {
+            @Override
+            public void onSuccess(String result) {
+                // The repository handles the "complete" notification, but we can show a toast too
+                _toastMessage.setValue(result);
+            }
+
+            @Override
+            public void onError(String message) {
+                _toastMessage.setValue(message);
+            }
+        });
     }
 
     public void onToastMessageShown() {
