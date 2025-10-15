@@ -8,6 +8,8 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
+import androidx.lifecycle.ViewModelProvider;
+import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.activity.result.ActivityResultLauncher;
@@ -30,6 +32,10 @@ import android.os.Looper;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 import android.util.Log;
+import android.view.ActionMode;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
 import android.view.View;
 import android.webkit.MimeTypeMap;
 import android.widget.Button;
@@ -43,6 +49,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.List;
+import java.util.Set;
 
 import okhttp3.MultipartBody;
 import okhttp3.RequestBody;
@@ -57,13 +64,15 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
     private static final String DOWNLOAD_CHANNEL_ID = "personal_cloud_downloads";
     private static final int NOTIFICATION_PERMISSION_CODE = 102;
 
-    // UI & API
-    private RecyclerView recyclerView;
+    private FileListViewModel viewModel;
     private FileAdapter fileAdapter;
+
+    private RecyclerView recyclerView;
     private Button selectFileButton;
     private ProgressBar progressBar;
     private TextView emptyTextView;
-    private ApiService apiService;
+
+    private ActionMode actionMode;
 
     private final ActivityResultLauncher<Intent> filePickerLauncher = registerForActivityResult(
         new ActivityResultContracts.StartActivityForResult(),
@@ -79,20 +88,80 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        viewModel = new ViewModelProvider(this).get(FileListViewModel.class);
+
         createNotificationChannel();
-        requestNotificationPermission();
-        apiService = RetrofitClient.getClient().create(ApiService.class);
+        requestNotificationPermission(); // This method is now included
         selectFileButton = findViewById(R.id.buttonSelectFile);
         progressBar = findViewById(R.id.progressBar);
         emptyTextView = findViewById(R.id.textViewEmpty);
         recyclerView = findViewById(R.id.recyclerViewFiles);
-        setupRecyclerView();
+        setupRecyclerView(); // This method is now included
         selectFileButton.setOnClickListener(v -> openFilePicker());
-        fetchFileList();
+
+        setupObservers();
+
+        viewModel.loadFileList();
+    }
+
+    private void setupObservers() {
+        viewModel.fileList.observe(this, files -> {
+            if (files != null) {
+                fileAdapter.setFiles(files);
+                showEmptyView(files.isEmpty());
+            }
+        });
+
+        viewModel.isLoading.observe(this, isLoading -> {
+            if (isLoading != null) {
+                showLoading(isLoading);
+            }
+        });
+
+        viewModel.toastMessage.observe(this, message -> {
+            if (message != null) {
+                Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+                viewModel.onToastMessageShown();
+            }
+        });
+
+        viewModel.selectedItems.observe(this, selection -> {
+            if (selection != null) {
+                fileAdapter.setSelectionMode(selection);
+                if (actionMode != null) {
+                    actionMode.setTitle(selection.size() + " selected");
+                    actionMode.invalidate();
+                }
+            }
+        });
+
+        viewModel.isSelectionModeActive.observe(this, isActive -> {
+            if (isActive != null && !isActive && actionMode != null) {
+                actionMode.finish();
+                actionMode = null;
+            }
+        });
     }
 
     @Override
     public void onFileClicked(FileMetadata file) {
+        if (viewModel.isSelectionModeActive.getValue() != null && viewModel.isSelectionModeActive.getValue()) {
+            viewModel.toggleSelection(file.getFilename());
+        } else {
+            viewFile(file);
+        }
+    }
+
+    @Override
+    public void onFileLongClicked(FileMetadata file) {
+        if (actionMode == null) {
+            actionMode = startActionMode(actionModeCallback);
+        }
+        viewModel.toggleSelection(file.getFilename());
+    }
+
+    private void viewFile(FileMetadata file) {
         String filename = file.getFilename();
         String fileType = file.getFileType();
         String fileUrl = RetrofitClient.BASE_URL + "download/" + filename;
@@ -102,86 +171,65 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
             intent.putExtra(ImageViewerActivity.EXTRA_IMAGE_URL, fileUrl);
             startActivity(intent);
         } else {
-            // For non-image files, build a URL for STREAMING
             String streamUrl = fileUrl + "?view=true";
-
             Intent intent = new Intent(Intent.ACTION_VIEW);
-
-            // IMPORTANT: We also need to provide the MIME type to the Intent.
-            // This helps Android find the correct app (e.g., a video player) faster.
             String mimeType = getMimeType(filename);
             intent.setDataAndType(Uri.parse(streamUrl), mimeType);
-
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-
             try {
                 startActivity(intent);
             } catch (ActivityNotFoundException e) {
-                Toast.makeText(this, "No app found to open a " + file.getFileType() + " file.", Toast.LENGTH_LONG).show();            }
+                Toast.makeText(this, "No app found to open this file type", Toast.LENGTH_LONG).show();
+            }
         }
     }
 
-    @Override
-    public void onFileOptionsClicked(FileMetadata file) {
-        String filename = file.getFilename();
-        View view = findViewByFileName(filename);
-        if (view == null) return;
+    private ActionMode.Callback actionModeCallback = new ActionMode.Callback() {
+        @Override
+        public boolean onCreateActionMode(ActionMode mode, Menu menu) {
+            MenuInflater inflater = mode.getMenuInflater();
+            inflater.inflate(R.menu.contextual_action_menu, menu);
+            return true;
+        }
 
-        PopupMenu popup = new PopupMenu(this, view);
-        popup.getMenuInflater().inflate(R.menu.file_options_menu, popup.getMenu());
-        popup.setOnMenuItemClickListener(item -> {
+        @Override
+        public boolean onPrepareActionMode(ActionMode mode, Menu menu) {
+            return false;
+        }
+
+        @Override
+        public boolean onActionItemClicked(ActionMode mode, MenuItem item) {
             int itemId = item.getItemId();
-            if (itemId == R.id.action_download) {
-                downloadFileFromServer(filename);
+            if (itemId == R.id.action_delete_contextual) {
+                viewModel.deleteSelectedFiles();
                 return true;
-            } else if (itemId == R.id.action_delete) {
-                new AlertDialog.Builder(this)
-                    .setTitle("Delete File")
-                    .setMessage("Are you sure you want to delete '" + filename + "'?")
-                    .setPositiveButton("Delete", (dialog, which) -> deleteFileFromServer(filename))
-                    .setNegativeButton("Cancel", null)
-                    .show();
+            } else if (itemId == R.id.action_download_contextual) {
+                Set<String> selectedFiles = viewModel.selectedItems.getValue();
+                if(selectedFiles != null){
+                    for(String filename : selectedFiles){
+                        downloadFileFromServer(filename);
+                    }
+                }
+                mode.finish();
                 return true;
             }
             return false;
-        });
-        popup.show();
-    }
-
-    private void fetchFileList() {
-        showLoading(true);
-        Call<List<FileMetadata>> call = apiService.getFiles();
-
-        call.enqueue(new Callback<List<FileMetadata>>() {
-            @Override
-            public void onResponse(@NonNull Call<List<FileMetadata>> call, @NonNull Response<List<FileMetadata>> response) {
-                showLoading(false);
-                if (response.isSuccessful() && response.body() != null) {
-                    List<FileMetadata> files = response.body();
-                    fileAdapter.setFiles(files);
-                    showEmptyView(files.isEmpty());
-                } else {
-                    Toast.makeText(MainActivity.this, "Failed to fetch files. Check server.", Toast.LENGTH_LONG).show();
-                }
-            }
-            @Override
-            public void onFailure(@NonNull Call<List<FileMetadata>> call, @NonNull Throwable t) {
-                showLoading(false);
-                Toast.makeText(MainActivity.this, "Network Error: " + t.getMessage(), Toast.LENGTH_LONG).show();
-            }
-        });
-    }
-
-    private void createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            CharSequence name = "Download & Upload Notifications";
-            String description = "Shows progress of file transfers";
-            int importance = NotificationManager.IMPORTANCE_LOW;
-            NotificationChannel channel = new NotificationChannel(DOWNLOAD_CHANNEL_ID, name, importance);
-            channel.setDescription(description);
-            NotificationManager notificationManager = getSystemService(NotificationManager.class);
-            notificationManager.createNotificationChannel(channel);
         }
+
+        @Override
+        public void onDestroyActionMode(ActionMode mode) {
+            viewModel.clearSelection();
+            actionMode = null;
+        }
+    };
+
+    // --- ALL THE HELPER AND API METHODS ARE NOW INCLUDED ---
+
+    private void setupRecyclerView() {
+        fileAdapter = new FileAdapter();
+        recyclerView.setAdapter(fileAdapter);
+        recyclerView.setLayoutManager(new GridLayoutManager(this, 2));
+        fileAdapter.setOnFileClickListener(this);
     }
 
     private void requestNotificationPermission() {
@@ -192,90 +240,9 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
         }
     }
 
-    private void setupRecyclerView() {
-        fileAdapter = new FileAdapter();
-        recyclerView.setAdapter(fileAdapter);
-        recyclerView.setLayoutManager(new LinearLayoutManager(this));
-        fileAdapter.setOnFileClickListener(this);
-    }
-
-    // (The rest of the file is unchanged)
-    private void downloadFileFromServer(String filename) {
-        final int notificationId = (int) System.currentTimeMillis();
-        final NotificationManagerCompat notificationManager = NotificationManagerCompat.from(this);
-        final NotificationCompat.Builder builder = new NotificationCompat.Builder(this, DOWNLOAD_CHANNEL_ID)
-            .setContentTitle(filename)
-            .setContentText("Download starting...")
-            .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setOngoing(true);
-
-        DownloadProgressListener progressListener = progress -> {
-            new Handler(Looper.getMainLooper()).post(() -> {
-                builder.setProgress(100, progress, false);
-                builder.setContentText(progress + "%");
-                if (ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-                    notificationManager.notify(notificationId, builder.build());
-                }
-            });
-        };
-
-        ApiService downloadService = RetrofitClient.getDownloadApiService(progressListener);
-
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-            notificationManager.notify(notificationId, builder.build());
-        }
-
-        downloadService.downloadFile(filename).enqueue(new Callback<ResponseBody>() {
-            @Override
-            public void onResponse(@NonNull Call<ResponseBody> call, @NonNull Response<ResponseBody> response) {
-                builder.setOngoing(false);
-                if (response.isSuccessful() && response.body() != null) {
-                    new Thread(() -> {
-                        boolean success = writeResponseBodyToDisk(response.body(), filename);
-                        new Handler(Looper.getMainLooper()).post(() -> {
-                            if (success) {
-                                builder.setContentText("Download complete")
-                                    .setProgress(0, 0, false)
-                                    .setSmallIcon(android.R.drawable.stat_sys_download_done);
-                                Toast.makeText(MainActivity.this, filename + " downloaded.", Toast.LENGTH_LONG).show();
-                            } else {
-                                builder.setContentText("Download failed: Error writing file")
-                                    .setProgress(0, 0, false);
-                                Toast.makeText(MainActivity.this, "Failed to save file.", Toast.LENGTH_SHORT).show();
-                            }
-                            if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-                                notificationManager.notify(notificationId, builder.build());
-                            }
-                        });
-                    }).start();
-                } else {
-                    builder.setContentText("Download failed: " + response.code()).setProgress(0, 0, false);
-                    if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-                        notificationManager.notify(notificationId, builder.build());
-                    }
-                    Toast.makeText(MainActivity.this, "Download failed. Code: " + response.code(), Toast.LENGTH_SHORT).show();
-                }
-            }
-
-            @Override
-            public void onFailure(@NonNull Call<ResponseBody> call, @NonNull Throwable t) {
-                builder.setOngoing(false);
-                builder.setContentText("Download failed: " + t.getMessage()).setProgress(0, 0, false);
-                if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-                    notificationManager.notify(notificationId, builder.build());
-                }
-                Toast.makeText(MainActivity.this, "Download error: " + t.getMessage(), Toast.LENGTH_LONG).show();
-            }
-        });
-    }
-
     private void uploadFile(Uri fileUri) {
         File tempFile = createTempFileFromUri(fileUri);
-        if (tempFile == null) {
-            Toast.makeText(this, "Failed to read file", Toast.LENGTH_SHORT).show();
-            return;
-        }
+        if (tempFile == null) return;
 
         final int notificationId = (int) System.currentTimeMillis();
         final NotificationManagerCompat notificationManager = NotificationManagerCompat.from(this);
@@ -288,20 +255,19 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
 
         ProgressRequestBody.ProgressListener progressListener = (bytesUploaded, totalBytes) -> {
             int progress = (int) ((100 * bytesUploaded) / totalBytes);
-            builder.setProgress(100, progress, false);
-            builder.setContentText(progress + "%");
+            builder.setProgress(100, progress, false).setContentText(progress + "%");
             if (ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
                 notificationManager.notify(notificationId, builder.build());
             }
         };
 
-        ProgressRequestBody progressRequestBody = new ProgressRequestBody(tempFile, progressListener);
-        String originalFileName = getFileNameFromUri(fileUri);
+        ProgressRequestBody requestBody = new ProgressRequestBody(tempFile, progressListener);
         MultipartBody multipartBody = new MultipartBody.Builder()
             .setType(MultipartBody.FORM)
-            .addFormDataPart("file", originalFileName, progressRequestBody)
+            .addFormDataPart("file", getFileNameFromUri(fileUri), requestBody)
             .build();
 
+        ApiService apiService = RetrofitClient.getClient().create(ApiService.class);
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
             notificationManager.notify(notificationId, builder.build());
         }
@@ -309,33 +275,81 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
         apiService.uploadFile(multipartBody).enqueue(new Callback<UploadResponse>() {
             @Override
             public void onResponse(@NonNull Call<UploadResponse> call, @NonNull Response<UploadResponse> response) {
-                fetchFileList();
+                viewModel.loadFileList();
                 builder.setOngoing(false);
                 if (response.isSuccessful()) {
-                    builder.setContentText("Upload complete")
-                        .setSmallIcon(android.R.drawable.stat_sys_upload_done)
-                        .setProgress(0, 0, false);
-                    Toast.makeText(MainActivity.this, "Upload successful!", Toast.LENGTH_SHORT).show();
+                    builder.setContentText("Upload complete").setProgress(0, 0, false).setSmallIcon(android.R.drawable.stat_sys_upload_done);
                 } else {
-                    builder.setContentText("Upload failed");
-                    builder.setProgress(0, 0, false);
-                    Toast.makeText(MainActivity.this, "Upload failed. Code: " + response.code(), Toast.LENGTH_SHORT).show();
+                    builder.setContentText("Upload failed").setProgress(0, 0, false);
                 }
                 if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
                     notificationManager.notify(notificationId, builder.build());
                 }
             }
-
             @Override
             public void onFailure(@NonNull Call<UploadResponse> call, @NonNull Throwable t) {
-                fetchFileList();
-                builder.setOngoing(false);
-                builder.setContentText("Upload failed: " + t.getMessage());
-                builder.setProgress(0, 0, false);
+                viewModel.loadFileList();
+                builder.setOngoing(false).setContentText("Upload failed: " + t.getMessage()).setProgress(0, 0, false);
                 if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
                     notificationManager.notify(notificationId, builder.build());
                 }
-                Toast.makeText(MainActivity.this, "Upload error: " + t.getMessage(), Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
+    private void downloadFileFromServer(String filename) {
+        final int notificationId = (int) System.currentTimeMillis();
+        final NotificationManagerCompat notificationManager = NotificationManagerCompat.from(this);
+        final NotificationCompat.Builder builder = new NotificationCompat.Builder(this, DOWNLOAD_CHANNEL_ID)
+            .setContentTitle(filename)
+            .setContentText("Download starting...")
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true);
+
+        DownloadProgressListener progressListener = progress -> {
+            builder.setProgress(100, progress, false).setContentText(progress + "%");
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                notificationManager.notify(notificationId, builder.build());
+            }
+        };
+
+        ApiService downloadService = RetrofitClient.getDownloadApiService(progressListener);
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+            notificationManager.notify(notificationId, builder.build());
+        }
+
+        downloadService.downloadFile(filename).enqueue(new Callback<ResponseBody>() {
+            @Override
+            public void onResponse(@NonNull Call<ResponseBody> call, @NonNull Response<ResponseBody> response) {
+                if (response.isSuccessful() && response.body() != null) {
+                    new Thread(() -> {
+                        boolean success = writeResponseBodyToDisk(response.body(), filename);
+                        new Handler(Looper.getMainLooper()).post(() -> {
+                            builder.setOngoing(false);
+                            if (success) {
+                                builder.setContentText("Download complete").setProgress(0, 0, false).setSmallIcon(android.R.drawable.stat_sys_download_done);
+                            } else {
+                                builder.setContentText("Download failed: Error writing file").setProgress(0, 0, false);
+                            }
+                            if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                                notificationManager.notify(notificationId, builder.build());
+                            }
+                        });
+                    }).start();
+                } else {
+                    builder.setOngoing(false).setContentText("Download failed: " + response.code()).setProgress(0, 0, false);
+                    if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                        notificationManager.notify(notificationId, builder.build());
+                    }
+                }
+            }
+            @Override
+            public void onFailure(@NonNull Call<ResponseBody> call, @NonNull Throwable t) {
+                builder.setOngoing(false).setContentText("Download failed: " + t.getMessage()).setProgress(0, 0, false);
+                if (ActivityCompat.checkSelfPermission(MainActivity.this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                    notificationManager.notify(notificationId, builder.build());
+                }
             }
         });
     }
@@ -348,7 +362,6 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
             values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
             Uri uri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
             if (uri == null) return false;
-
             try (OutputStream outputStream = getContentResolver().openOutputStream(uri);
                  InputStream inputStream = body.byteStream()) {
                 if (outputStream == null) return false;
@@ -366,24 +379,16 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
         }
     }
 
-    private void deleteFileFromServer(String filename) {
-        showLoading(true);
-        apiService.deleteFile(filename).enqueue(new Callback<ResponseBody>() {
-            @Override
-            public void onResponse(@NonNull Call<ResponseBody> call, @NonNull Response<ResponseBody> response) {
-                fetchFileList();
-                if (response.isSuccessful()) {
-                    Toast.makeText(MainActivity.this, "'" + filename + "' deleted", Toast.LENGTH_SHORT).show();
-                } else {
-                    Toast.makeText(MainActivity.this, "Delete failed. Code: " + response.code(), Toast.LENGTH_SHORT).show();
-                }
-            }
-            @Override
-            public void onFailure(@NonNull Call<ResponseBody> call, @NonNull Throwable t) {
-                fetchFileList();
-                Toast.makeText(MainActivity.this, "Delete error: " + t.getMessage(), Toast.LENGTH_LONG).show();
-            }
-        });
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            CharSequence name = "Download & Upload Notifications";
+            String description = "Shows progress of file transfers";
+            int importance = NotificationManager.IMPORTANCE_LOW;
+            NotificationChannel channel = new NotificationChannel(DOWNLOAD_CHANNEL_ID, name, importance);
+            channel.setDescription(description);
+            NotificationManager notificationManager = getSystemService(NotificationManager.class);
+            notificationManager.createNotificationChannel(channel);
+        }
     }
 
     private String getMimeType(String filename) {
@@ -397,13 +402,16 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
 
     private void showLoading(boolean isLoading) {
         progressBar.setVisibility(isLoading ? View.VISIBLE : View.GONE);
-        recyclerView.setVisibility(isLoading ? View.GONE : View.VISIBLE);
-        if (isLoading) emptyTextView.setVisibility(View.GONE);
     }
 
     private void showEmptyView(boolean show) {
-        emptyTextView.setVisibility(show ? View.VISIBLE : View.GONE);
-        recyclerView.setVisibility(show ? View.GONE : View.VISIBLE);
+        if(show){
+            emptyTextView.setVisibility(View.VISIBLE);
+            recyclerView.setVisibility(View.GONE);
+        } else {
+            emptyTextView.setVisibility(View.GONE);
+            recyclerView.setVisibility(View.VISIBLE);
+        }
     }
 
     private void openFilePicker() {
@@ -413,15 +421,6 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
         filePickerLauncher.launch(intent);
     }
 
-    private View findViewByFileName(String filename) {
-        for (int i = 0; i < fileAdapter.getItemCount(); i++) {
-            FileAdapter.FileViewHolder holder = (FileAdapter.FileViewHolder) recyclerView.findViewHolderForAdapterPosition(i);
-            if (holder != null && holder.fileNameTextView.getText().toString().equals(filename)) {
-                return holder.optionsButton;
-            }
-        }
-        return null;
-    }
 
     private String getFileNameFromUri(Uri uri) {
         String fileName = null;

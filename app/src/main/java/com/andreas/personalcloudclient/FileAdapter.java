@@ -1,5 +1,7 @@
 package com.andreas.personalcloudclient;
 
+import android.graphics.Color;
+import androidx.core.content.ContextCompat;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -12,20 +14,28 @@ import com.bumptech.glide.Glide;
 import java.text.CharacterIterator;
 import java.text.StringCharacterIterator;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class FileAdapter extends RecyclerView.Adapter<FileAdapter.FileViewHolder> {
 
     private List<FileMetadata> fileList = new ArrayList<>();
+    private Set<String> selectedItems = new HashSet<>();
     private OnFileClickListener listener;
 
     public interface OnFileClickListener {
         void onFileClicked(FileMetadata file);
-        void onFileOptionsClicked(FileMetadata file);
+        void onFileLongClicked(FileMetadata file);
     }
 
     public void setOnFileClickListener(OnFileClickListener listener) {
         this.listener = listener;
+    }
+
+    public void setSelectionMode(Set<String> selectedItems) {
+        this.selectedItems = selectedItems;
+        notifyDataSetChanged();
     }
 
     public static class FileViewHolder extends RecyclerView.ViewHolder {
@@ -57,9 +67,14 @@ public class FileAdapter extends RecyclerView.Adapter<FileAdapter.FileViewHolder
 
         holder.fileNameTextView.setText(file.getFilename());
         holder.fileSizeTextView.setText(formatFileSize(file.getSize()));
+        holder.optionsButton.setVisibility(View.GONE);
 
-        // Reset the image view to avoid flickering from recycled views
-        holder.iconImageView.setImageResource(R.drawable.ic_file_generic);
+        if (selectedItems.contains(file.getFilename())) {
+            holder.itemView.setBackgroundColor(ContextCompat.getColor(holder.itemView.getContext(), R.color.selected_item_color));
+        } else {
+            // Use transparent to allow the default selectableItemBackground ripple effect to show
+            holder.itemView.setBackgroundColor(Color.TRANSPARENT);
+        }
 
         switch (file.getFileType()) {
             case "image":
@@ -90,16 +105,17 @@ public class FileAdapter extends RecyclerView.Adapter<FileAdapter.FileViewHolder
                 break;
         }
 
-        holder.optionsButton.setOnClickListener(v -> {
-            if (listener != null) {
-                listener.onFileOptionsClicked(file);
-            }
-        });
-
         holder.itemView.setOnClickListener(v -> {
             if (listener != null) {
                 listener.onFileClicked(file);
             }
+        });
+
+        holder.itemView.setOnLongClickListener(v -> {
+            if (listener != null) {
+                listener.onFileLongClicked(file);
+            }
+            return true;
         });
     }
 
