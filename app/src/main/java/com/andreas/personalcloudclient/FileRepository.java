@@ -28,6 +28,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import okhttp3.MultipartBody;
 import okhttp3.ResponseBody;
 import retrofit2.Call;
@@ -38,49 +40,58 @@ public class FileRepository {
 
     private static final String TAG = "FileRepository";
 
+    public interface GetFilesCallback {
+        void onCacheLoaded(List<FileMetadata> cachedFiles);
+        void onNetworkResult(List<FileMetadata> networkFiles, String error);
+    }
+
     public interface RepositoryCallback<T> {
         void onSuccess(T result);
         void onError(String message);
     }
 
-    private final Context context; // <-- NEW: Context for notifications and connectivity
+    private final Context context;
     private final ApiService apiService;
-    private List<FileMetadata> cachedFiles = null;
+    private final FileDao fileDao;
+    private final ExecutorService executor;
 
-    // Updated constructor to accept Application context
     public FileRepository(Application application) {
         this.context = application.getApplicationContext();
+        AppDatabase database = AppDatabase.getDatabase(application);
+        this.fileDao = database.fileDao();
         this.apiService = RetrofitClient.getClient().create(ApiService.class);
+        this.executor = Executors.newSingleThreadExecutor();
     }
 
-    // --- NEW: Offline Check Helper ---
-    private boolean isNetworkAvailable() {
-        ConnectivityManager connectivityManager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
-        if (connectivityManager != null) {
-            NetworkInfo activeNetworkInfo = connectivityManager.getActiveNetworkInfo();
-            return activeNetworkInfo != null && activeNetworkInfo.isConnected();
-        }
-        return false;
-    }
+    public void getFiles(GetFilesCallback callback) {
+        executor.execute(() -> {
+            List<FileMetadata> cachedFiles = fileDao.getAllFiles();
+            new Handler(Looper.getMainLooper()).post(() -> callback.onCacheLoaded(cachedFiles));
+        });
 
-    public void getFiles(RepositoryCallback<List<FileMetadata>> callback) {
         if (!isNetworkAvailable()) {
-            callback.onError("Offline: Could not connect to server.");
+            new Handler(Looper.getMainLooper()).post(() -> callback.onNetworkResult(null, "Offline: Showing cached files."));
             return;
         }
+
         apiService.getFiles().enqueue(new Callback<List<FileMetadata>>() {
             @Override
             public void onResponse(@NonNull Call<List<FileMetadata>> call, @NonNull Response<List<FileMetadata>> response) {
                 if (response.isSuccessful() && response.body() != null) {
-                    cachedFiles = response.body();
-                    callback.onSuccess(new ArrayList<>(cachedFiles));
+                    List<FileMetadata> networkFiles = response.body();
+                    executor.execute(() -> {
+                        fileDao.deleteAll();
+                        fileDao.insertAll(networkFiles);
+                    });
+                    callback.onNetworkResult(networkFiles, null);
                 } else {
-                    callback.onError("Failed to fetch files. Code: " + response.code());
+                    callback.onNetworkResult(null, "Failed to fetch files. Code: " + response.code());
                 }
             }
+
             @Override
             public void onFailure(@NonNull Call<List<FileMetadata>> call, @NonNull Throwable t) {
-                callback.onError("Network Error: " + t.getMessage());
+                callback.onNetworkResult(null, "Network Error: " + t.getMessage());
             }
         });
     }
@@ -94,9 +105,7 @@ public class FileRepository {
             @Override
             public void onResponse(@NonNull Call<ResponseBody> call, @NonNull Response<ResponseBody> response) {
                 if (response.isSuccessful()) {
-                    if (cachedFiles != null) {
-                        cachedFiles.removeIf(file -> file.getFilename().equals(filename));
-                    }
+                    executor.execute(() -> fileDao.deleteFileByFilename(filename)); // Update database
                     callback.onSuccess(filename + " deleted successfully.");
                 } else {
                     callback.onError("Delete failed. Code: " + response.code());
@@ -109,7 +118,6 @@ public class FileRepository {
         });
     }
 
-    // --- NEW: Upload logic moved here ---
     public void uploadFile(Uri fileUri, RepositoryCallback<String> callback) {
         if (!isNetworkAvailable()) {
             callback.onError("Offline: Cannot upload file.");
@@ -176,7 +184,6 @@ public class FileRepository {
         });
     }
 
-    // --- NEW: Download logic moved here ---
     public void downloadFile(String filename, RepositoryCallback<String> callback) {
         if (!isNetworkAvailable()) {
             callback.onError("Offline: Cannot download file.");
@@ -245,7 +252,6 @@ public class FileRepository {
         });
     }
 
-    // --- All file helper methods now live in the Repository ---
     private boolean writeResponseBodyToDisk(ResponseBody body, String filename) {
         try {
             ContentValues values = new ContentValues();
@@ -314,5 +320,14 @@ public class FileRepository {
             Log.e(TAG, "Failed to create temp file from Uri", e);
             return null;
         }
+    }
+
+    private boolean isNetworkAvailable() {
+        ConnectivityManager connectivityManager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (connectivityManager != null) {
+            NetworkInfo activeNetworkInfo = connectivityManager.getActiveNetworkInfo();
+            return activeNetworkInfo != null && activeNetworkInfo.isConnected();
+        }
+        return false;
     }
 }

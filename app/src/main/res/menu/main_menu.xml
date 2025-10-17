@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <!-- Upload Action -->
+    <item
+        android:id="@+id/action_upload"
+        android:icon="@drawable/ic_upload"
+        android:title="Upload File"
+        app:showAsAction="ifRoom" />
+
+    <!-- This will be the three-dots menu -->
+    <item
+        android:id="@+id/action_more"
+        android:icon="@drawable/ic_more_vert"
+        android:title="More"
+        app:showAsAction="always">
+
+        <!-- Sub-menu items for the three-dots menu -->
+        <menu>
+            <item
+                android:id="@+id/action_toggle_layout"
+                android:icon="@drawable/ic_view_list"
+                android:title="Toggle Layout"
+                app:showAsAction="never" />
+
+            <item
+                android:id="@+id/action_select_all"
+                android:title="Select All"
+                app:showAsAction="never" />
+        </menu>
+    </item>
+</menu>

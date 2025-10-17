@@ -1,7 +1,6 @@
 package com.andreas.personalcloudclient;
 
 import androidx.annotation.NonNull;
-import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.GridLayoutManager;
@@ -30,11 +29,15 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
     private FileAdapter fileAdapter;
     private ActionMode actionMode;
 
+    // --- NEW CLASS MEMBERS ---
+    private RecyclerView recyclerView;
+    private boolean isGridLayout = true; // To track the current layout state
+    private MenuItem toggleLayoutMenuItem; // To change the icon dynamically
+
     private final ActivityResultLauncher<Intent> filePickerLauncher = registerForActivityResult(
         new ActivityResultContracts.StartActivityForResult(),
         result -> {
             if (result.getResultCode() == RESULT_OK && result.getData() != null) {
-                // --- DELEGATE TO VIEWMODEL ---
                 viewModel.uploadFile(result.getData().getData());
             } else {
                 Toast.makeText(this, "File selection cancelled", Toast.LENGTH_SHORT).show();
@@ -46,7 +49,7 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        viewModel = new ViewModelProvider(this).get(FileListViewModel.class);
+        viewModel = new ViewModelProvider(this, ViewModelProvider.AndroidViewModelFactory.getInstance(getApplication())).get(FileListViewModel.class);
 
         setupUI();
         setupObservers();
@@ -55,17 +58,15 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
     }
 
     private void setupUI() {
-        Button selectFileButton = findViewById(R.id.buttonSelectFile);
-        ProgressBar progressBar = findViewById(R.id.progressBar);
-        TextView emptyTextView = findViewById(R.id.textViewEmpty);
-        RecyclerView recyclerView = findViewById(R.id.recyclerViewFiles);
+        // --- MODIFIED: Assign recyclerView to the class member ---
+        recyclerView = findViewById(R.id.recyclerViewFiles);
 
         fileAdapter = new FileAdapter();
         recyclerView.setAdapter(fileAdapter);
+        // Start with a Grid Layout
         recyclerView.setLayoutManager(new GridLayoutManager(this, 2));
         fileAdapter.setOnFileClickListener(this);
 
-        selectFileButton.setOnClickListener(v -> openFilePicker());
     }
 
     private void setupObservers() {
@@ -73,7 +74,7 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
             if (files != null) {
                 fileAdapter.setFiles(files);
                 findViewById(R.id.textViewEmpty).setVisibility(files.isEmpty() ? View.VISIBLE : View.GONE);
-                findViewById(R.id.recyclerViewFiles).setVisibility(files.isEmpty() ? View.GONE : View.VISIBLE);
+                recyclerView.setVisibility(files.isEmpty() ? View.GONE : View.VISIBLE);
             }
         });
 
@@ -95,7 +96,10 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
                 fileAdapter.setSelectionMode(selection);
                 if (actionMode != null) {
                     actionMode.setTitle(selection.size() + " selected");
-                    actionMode.invalidate();
+                    // If all items are deselected, the action mode should finish.
+                    if (selection.isEmpty()) {
+                        actionMode.finish();
+                    }
                 }
             }
         });
@@ -106,6 +110,55 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
             }
         });
     }
+
+    // --- NEW: Inflate the options menu from XML ---
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.main_menu, menu);
+        // Find the specific menu item for toggling layout
+        toggleLayoutMenuItem = menu.findItem(R.id.action_more).getSubMenu().findItem(R.id.action_toggle_layout);
+        return true;
+    }
+
+    // --- NEW: Handle clicks on menu items ---
+    @Override
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        int id = item.getItemId();
+
+        if (id == R.id.action_upload) {
+            openFilePicker();
+            return true;
+        } else if (id == R.id.action_toggle_layout) {
+            toggleLayout();
+            return true;
+        } else if (id == R.id.action_select_all) {
+            viewModel.selectAllFiles();
+            // Start action mode if it's not already active
+            if (actionMode == null) {
+                actionMode = startActionMode(actionModeCallback);
+            }
+            return true;
+        }
+
+        return super.onOptionsItemSelected(item);
+    }
+
+    // --- NEW: Logic to switch between Grid and List layout ---
+    private void toggleLayout() {
+        if (isGridLayout) {
+            // Switch to Linear Layout
+            recyclerView.setLayoutManager(new LinearLayoutManager(this));
+            toggleLayoutMenuItem.setIcon(R.drawable.ic_view_grid); // Show grid icon for next click
+            toggleLayoutMenuItem.setTitle("Switch to Grid View");
+        } else {
+            // Switch to Grid Layout
+            recyclerView.setLayoutManager(new GridLayoutManager(this, 2));
+            toggleLayoutMenuItem.setIcon(R.drawable.ic_view_list); // Show list icon for next click
+            toggleLayoutMenuItem.setTitle("Switch to List View");
+        }
+        isGridLayout = !isGridLayout;
+    }
+
 
     @Override
     public void onFileClicked(FileMetadata file) {

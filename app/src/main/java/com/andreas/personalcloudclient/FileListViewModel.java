@@ -11,7 +11,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-// --- It now extends AndroidViewModel to get the Application context ---
 public class FileListViewModel extends AndroidViewModel {
 
     private final FileRepository fileRepository;
@@ -33,42 +32,27 @@ public class FileListViewModel extends AndroidViewModel {
 
     public FileListViewModel(@NonNull Application application) {
         super(application);
-        // Pass the application context to the repository
         this.fileRepository = new FileRepository(application);
-    }
-
-    public void toggleSelection(String filename) {
-        Set<String> currentSelection = _selectedItems.getValue();
-        if (currentSelection == null) currentSelection = new HashSet<>();
-
-        if (currentSelection.contains(filename)) {
-            currentSelection.remove(filename);
-        } else {
-            currentSelection.add(filename);
-        }
-
-        _selectedItems.setValue(currentSelection);
-        _isSelectionModeActive.setValue(!currentSelection.isEmpty());
-    }
-
-    public void clearSelection() {
-        _selectedItems.setValue(new HashSet<>());
-        _isSelectionModeActive.setValue(false);
     }
 
     public void loadFileList() {
         _isLoading.setValue(true);
-        fileRepository.getFiles(new FileRepository.RepositoryCallback<List<FileMetadata>>() {
+
+        fileRepository.getFiles(new FileRepository.GetFilesCallback() {
             @Override
-            public void onSuccess(List<FileMetadata> result) {
-                _fileList.setValue(result);
-                _isLoading.setValue(false);
+            public void onCacheLoaded(List<FileMetadata> cachedFiles) {
+                _fileList.setValue(cachedFiles);
             }
 
             @Override
-            public void onError(String message) {
-                _toastMessage.setValue(message);
+            public void onNetworkResult(List<FileMetadata> networkFiles, String error) {
                 _isLoading.setValue(false);
+                if (networkFiles != null) {
+                    _fileList.setValue(networkFiles);
+                }
+                if (error != null) {
+                    _toastMessage.setValue(error);
+                }
             }
         });
     }
@@ -108,14 +92,13 @@ public class FileListViewModel extends AndroidViewModel {
         }
     }
 
-    // --- NEW: Methods for UI to call ---
     public void uploadFile(Uri fileUri) {
         _isLoading.setValue(true);
         fileRepository.uploadFile(fileUri, new FileRepository.RepositoryCallback<String>() {
             @Override
             public void onSuccess(String result) {
                 _toastMessage.setValue(result);
-                loadFileList(); // Refresh the list after successful upload
+                loadFileList();
             }
 
             @Override
@@ -127,11 +110,9 @@ public class FileListViewModel extends AndroidViewModel {
     }
 
     public void downloadFile(String filename) {
-        // We don't need to show a loading spinner, as the notification provides feedback
         fileRepository.downloadFile(filename, new FileRepository.RepositoryCallback<String>() {
             @Override
             public void onSuccess(String result) {
-                // The repository handles the "complete" notification, but we can show a toast too
                 _toastMessage.setValue(result);
             }
 
@@ -142,7 +123,41 @@ public class FileListViewModel extends AndroidViewModel {
         });
     }
 
+    public void toggleSelection(String filename) {
+        Set<String> currentSelection = _selectedItems.getValue();
+        if (currentSelection == null) currentSelection = new HashSet<>();
+
+        if (currentSelection.contains(filename)) {
+            currentSelection.remove(filename);
+        } else {
+            currentSelection.add(filename);
+        }
+
+        _selectedItems.setValue(currentSelection);
+        _isSelectionModeActive.setValue(!currentSelection.isEmpty());
+    }
+
+    public void clearSelection() {
+        _selectedItems.setValue(new HashSet<>());
+        _isSelectionModeActive.setValue(false);
+    }
+
     public void onToastMessageShown() {
         _toastMessage.setValue(null);
+    }
+
+    public void selectAllFiles() {
+        List<FileMetadata> currentFiles = _fileList.getValue();
+        if (currentFiles == null || currentFiles.isEmpty()) {
+            return; // Nothing to select
+        }
+
+        Set<String> allFilenames = new HashSet<>();
+        for (FileMetadata file : currentFiles) {
+            allFilenames.add(file.getFilename());
+        }
+
+        _selectedItems.setValue(allFilenames);
+        _isSelectionModeActive.setValue(true);
     }
 }
