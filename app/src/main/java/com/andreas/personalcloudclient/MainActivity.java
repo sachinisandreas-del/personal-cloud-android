@@ -8,6 +8,8 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
+
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.net.Uri;
@@ -28,6 +30,7 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
     private FileListViewModel viewModel;
     private FileAdapter fileAdapter;
     private ActionMode actionMode;
+    private SwipeRefreshLayout swipeRefreshLayout;
 
     // --- NEW CLASS MEMBERS ---
     private RecyclerView recyclerView;
@@ -58,6 +61,8 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
     }
 
     private void setupUI() {
+
+        swipeRefreshLayout = findViewById(R.id.swipeRefreshLayout);
         // --- MODIFIED: Assign recyclerView to the class member ---
         recyclerView = findViewById(R.id.recyclerViewFiles);
 
@@ -66,6 +71,12 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
         // Start with a Grid Layout
         recyclerView.setLayoutManager(new GridLayoutManager(this, 2));
         fileAdapter.setOnFileClickListener(this);
+
+        swipeRefreshLayout.setOnRefreshListener(() -> {
+            // When the user swipes, tell the ViewModel to reload the file list.
+            // The loading indicator will be handled by the observer below.
+            viewModel.loadFileList();
+        });
 
     }
 
@@ -80,7 +91,17 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
 
         viewModel.isLoading.observe(this, isLoading -> {
             if (isLoading != null) {
-                findViewById(R.id.progressBar).setVisibility(isLoading ? View.VISIBLE : View.GONE);
+                // This 'if' condition prevents the big central progress bar from
+                // showing when you are using swipe-to-refresh.
+                if (!swipeRefreshLayout.isRefreshing()) {
+                    findViewById(R.id.progressBar).setVisibility(isLoading ? View.VISIBLE : View.GONE);
+                }
+
+                // This 'if' condition tells the swipe-to-refresh layout to hide
+                // its spinning icon when the loading is finished.
+                if (!isLoading) {
+                    swipeRefreshLayout.setRefreshing(false);
+                }
             }
         });
 
