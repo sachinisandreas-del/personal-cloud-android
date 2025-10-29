@@ -59,7 +59,8 @@ public class FileRepository {
         this.context = application.getApplicationContext();
         AppDatabase database = AppDatabase.getDatabase(application);
         this.fileDao = database.fileDao();
-        this.apiService = RetrofitClient.getClient().create(ApiService.class);
+        // Pass the application context to the RetrofitClient
+        this.apiService = RetrofitClient.getClient(application).create(ApiService.class);
         this.executor = Executors.newSingleThreadExecutor();
     }
 

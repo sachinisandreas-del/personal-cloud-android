@@ -2,33 +2,47 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Permissions required by the application -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-
+    <!-- The 'android:name' attribute is the key change. It tells the OS to load
+         our MyApplication class when the app process starts, before any activities. -->
     <application
+        android:name=".MyApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.PersonalCloudClient"
-        android:usesCleartextTraffic="true"
-        tools:targetApi="31">
-        <activity
-            android:name=".ImageViewerActivity"
-            android:exported="false" />
+        tools:targetApi="31"
+        android:usesCleartextTraffic="true">
+
+        <!-- MainActivity is not the launcher. -->
         <activity
             android:name=".MainActivity"
+            android:exported="false" />
+
+        <!-- ImageViewerActivity is for internal use. -->
+        <activity
+            android:name=".ImageViewerActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AppCompat.NoActionBar" />
+
+        <!-- LoginActivity is the main entry point for the application. -->
+        <activity
+            android:name=".LoginActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
     </application>
 
 </manifest>

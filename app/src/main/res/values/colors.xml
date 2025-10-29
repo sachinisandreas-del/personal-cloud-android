@@ -9,6 +9,8 @@
     <color name="white">#FFFFFFFF</color>
 
     <color name="selected_item_color">#33FFFFFF</color> <!-- A semi-transparent white -->
+    <color name="google_button_stroke_color">#757575</color>
+    <color name="hyperlink_blue">#0000EE</color>
 
 
 </resources>

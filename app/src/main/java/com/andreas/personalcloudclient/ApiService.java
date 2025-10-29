@@ -1,35 +1,51 @@
 package com.andreas.personalcloudclient;
 
 import java.util.List;
-import okhttp3.MultipartBody;
-import okhttp3.ResponseBody; // <-- NEW: Import for file streams
-import retrofit2.Call;
-import retrofit2.http.DELETE; // <-- NEW
-import retrofit2.http.GET;
-import retrofit2.http.Multipart;
-import retrofit2.http.POST;
-import retrofit2.http.Part;
-import retrofit2.http.Path;     // <-- NEW
-import retrofit2.http.Streaming; // <-- NEW
-import okhttp3.RequestBody;
-import retrofit2.http.Body;
-public interface ApiService {
-    @POST("upload")
-    Call<UploadResponse> uploadFile(@Body RequestBody body);
+import java.util.Map;
 
-    @Multipart
-    @POST("upload")
-    Call<UploadResponse> uploadFile(@Part MultipartBody.Part file);
+import okhttp3.MultipartBody;
+import okhttp3.RequestBody;
+import okhttp3.ResponseBody;
+import retrofit2.Call;
+import retrofit2.http.Body;
+import retrofit2.http.DELETE;
+import retrofit2.http.GET;
+import retrofit2.http.Header;
+import retrofit2.http.POST;
+import retrofit2.http.Path;
+import retrofit2.http.Streaming;
+
+public interface ApiService {
+
+    // --- NEW AUTHENTICATION ENDPOINTS ---
+
+    @POST("register")
+    Call<ResponseBody> register(@Body RegisterRequest registerRequest);
+
+    @POST("login")
+    Call<AuthResponse> login(@Body LoginRequest loginRequest);
+
+    // We send the Google token in a simple Map.
+    @POST("login/google")
+    Call<AuthResponse> loginWithGoogle(@Body Map<String, String> googleToken);
+
+    @POST("token/refresh")
+    Call<AuthResponse> refreshToken(@Body Map<String, String> refreshToken);
+
+
+    // --- UPDATED FILE OPERATION ENDPOINTS ---
+    // All of these now require an Authorization header.
 
     @GET("files")
     Call<List<FileMetadata>> getFiles();
 
-    // --- NEW: Endpoint to download a file ---
+    @POST("upload")
+    Call<UploadResponse> uploadFile(@Body RequestBody body);
+
     @GET("download/{filename}")
-    @Streaming // Crucial for downloading files efficiently
+    @Streaming
     Call<ResponseBody> downloadFile(@Path("filename") String filename);
 
-    // --- NEW: Endpoint to delete a file ---
     @DELETE("delete/{filename}")
     Call<ResponseBody> deleteFile(@Path("filename") String filename);
 }
