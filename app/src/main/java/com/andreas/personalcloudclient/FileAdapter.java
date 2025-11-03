@@ -17,7 +17,8 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-
+import com.bumptech.glide.load.model.GlideUrl;
+import com.bumptech.glide.load.model.LazyHeaders;
 public class FileAdapter extends RecyclerView.Adapter<FileAdapter.FileViewHolder> {
 
     private List<FileMetadata> fileList = new ArrayList<>();
@@ -78,9 +79,23 @@ public class FileAdapter extends RecyclerView.Adapter<FileAdapter.FileViewHolder
 
         switch (file.getFileType()) {
             case "image":
-                String imageUrl = RetrofitClient.BASE_URL + "download/" + file.getFilename();
+                // --- NEW AUTHENTICATED GLIDE LOGIC ---
+
+                // 1. Get the SessionManager to retrieve our token.
+                SessionManager sessionManager = SessionManager.getInstance();
+
+                // 2. Create a GlideUrl, which allows us to attach headers.
+                GlideUrl glideUrl = new GlideUrl(
+                    RetrofitClient.BASE_URL + "download/" + file.getFilename(),
+                    new LazyHeaders.Builder()
+                        // Add the Authorization header.
+                        .addHeader("Authorization", "Bearer " + sessionManager.getAccessToken())
+                        .build()
+                );
+
+                // 3. Tell Glide to load the GlideUrl instead of the simple String URL.
                 Glide.with(holder.itemView.getContext())
-                    .load(imageUrl)
+                    .load(glideUrl) // We now load the object with headers
                     .placeholder(R.drawable.ic_file_generic)
                     .error(R.drawable.ic_file_generic)
                     .into(holder.iconImageView);

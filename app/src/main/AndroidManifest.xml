@@ -7,8 +7,6 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- The 'android:name' attribute is the key change. It tells the OS to load
-         our MyApplication class when the app process starts, before any activities. -->
     <application
         android:name=".MyApplication"
         android:allowBackup="true"
@@ -22,27 +20,35 @@
         tools:targetApi="31"
         android:usesCleartextTraffic="true">
 
-        <!-- MainActivity is not the launcher. -->
+        <!-- SplashActivity is now the main entry point of the application.
+             It has no UI and its only job is to route the user to the correct screen. -->
         <activity
-            android:name=".MainActivity"
-            android:exported="false" />
-
-        <!-- ImageViewerActivity is for internal use. -->
-        <activity
-            android:name=".ImageViewerActivity"
-            android:exported="false"
-            android:theme="@style/Theme.AppCompat.NoActionBar" />
-
-        <!-- LoginActivity is the main entry point for the application. -->
-        <activity
-            android:name=".LoginActivity"
-            android:exported="true">
+            android:name=".SplashActivity"
+            android:exported="true"
+            android:theme="@style/Theme.AppCompat.NoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
+        <!-- LoginActivity is now an internal activity, launched by SplashActivity. -->
+        <activity
+            android:name=".LoginActivity"
+            android:exported="false" />
+
+        <!-- MainActivity is an internal activity, launched by Splash or Login. -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="false" />
+
+        <!-- ImageViewerActivity is an internal activity, launched by MainActivity. -->
+        <activity
+            android:name=".ImageViewerActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AppCompat.NoActionBar" />
+
     </application>
 
 </manifest>
+
