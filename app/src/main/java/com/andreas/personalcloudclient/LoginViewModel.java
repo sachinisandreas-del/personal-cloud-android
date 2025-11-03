@@ -38,15 +38,15 @@ public class LoginViewModel extends AndroidViewModel {
 
     // --- Public Methods Called by LoginActivity ---
 
-    public void login(String email, String password) {
-        if (email.isEmpty() || password.isEmpty()) {
-            _toastMessage.setValue("Email and password cannot be empty.");
+    public void login(String loginIdentifier, String password) {
+        if (loginIdentifier.isEmpty() || password.isEmpty()) {
+            _toastMessage.setValue("Identifier and password cannot be empty.");
             return;
         }
-
         _isLoading.setValue(true);
-
-        authRepository.login(email, password, new AuthRepository.AuthCallback<AuthResponse>() {
+        // Pass the identifier to the repository.
+        authRepository.login(loginIdentifier, password, new AuthRepository.AuthCallback<AuthResponse>() {
+            // ... the rest of the method is exactly the same ...
             @Override
             public void onSuccess(AuthResponse response) {
                 _isLoading.setValue(false);
@@ -58,7 +58,6 @@ public class LoginViewModel extends AndroidViewModel {
             public void onError(String message) {
                 _isLoading.setValue(false);
                 _toastMessage.setValue(message);
-
                 Log.e(TAG, "Login error: " + message);
             }
         });

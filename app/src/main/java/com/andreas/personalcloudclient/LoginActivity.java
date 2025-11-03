@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.util.Patterns;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ProgressBar;
@@ -21,7 +22,9 @@ public class LoginActivity extends AppCompatActivity {
 
     // View References
     private TextInputLayout textInputLayoutUsername;
-    private TextInputEditText editTextUsername; // Need a direct reference to get text
+    private TextInputEditText editTextUsername;
+    private TextInputLayout textInputLayoutEmail;
+    private TextInputEditText editTextEmail;
     private TextInputLayout textInputLayoutPassword;
     private TextInputEditText editTextPassword;
     private TextInputLayout textInputLayoutConfirmPassword;
@@ -45,6 +48,8 @@ public class LoginActivity extends AppCompatActivity {
         // --- Find all the views ---
         textInputLayoutUsername = findViewById(R.id.textInputLayoutUsername);
         editTextUsername = findViewById(R.id.editTextUsername);
+        textInputLayoutEmail = findViewById(R.id.textInputLayoutEmail);
+        editTextEmail = findViewById(R.id.editTextEmail);
         textInputLayoutPassword = findViewById(R.id.textInputLayoutPassword);
         editTextPassword = findViewById(R.id.editTextPassword);
         textInputLayoutConfirmPassword = findViewById(R.id.textInputLayoutConfirmPassword);
@@ -55,25 +60,9 @@ public class LoginActivity extends AppCompatActivity {
         progressBar = findViewById(R.id.progressBarLogin);
 
         // --- Set up the click listeners ---
-        buttonAction.setOnClickListener(v -> {
-            // Get the text from the input fields.
-            String username = editTextUsername.getText().toString().trim();
-            String password = editTextPassword.getText().toString().trim();
-
-            if (isLoginMode) {
-                // In login mode, call the login method in the ViewModel.
-                // We use the 'username' field for the email, as the hint suggests.
-                viewModel.login(username, password);
-            } else {
-                // In register mode, get the confirm password text as well.
-                String confirmPassword = editTextConfirmPassword.getText().toString().trim();
-                // Call the register method in the ViewModel.
-                viewModel.register(username, username, password, confirmPassword); // Sending username for both user/email for now
-            }
-        });
+        buttonAction.setOnClickListener(v -> handleAuthAction());
 
         buttonSignInWithGoogle.setOnClickListener(v -> {
-            // TODO: Call the Google Sign-In method (will be implemented in a later step).
             Toast.makeText(this, "Google Sign-In coming soon!", Toast.LENGTH_SHORT).show();
         });
 
@@ -83,6 +72,28 @@ public class LoginActivity extends AppCompatActivity {
 
         // --- Set up observers for LiveData ---
         setupObservers();
+
+        // --- Initial UI state setup ---
+        toggleMode(); // Call this once to set the initial state correctly
+        isLoginMode = false; // so that the first toggle makes it true
+        toggleMode();
+    }
+
+    private void handleAuthAction() {
+        String username = editTextUsername.getText().toString().trim();
+        String password = editTextPassword.getText().toString().trim();
+
+        if (isLoginMode) {
+            // In login mode, the first field is for the email.
+            viewModel.login(username, password);
+        } else {
+            // In register mode, get the text from all three fields.
+            String email = editTextEmail.getText().toString().trim();
+            String confirmPassword = editTextConfirmPassword.getText().toString().trim();
+
+            // Call the register method with the correct variables.
+            viewModel.register(username, email, password, confirmPassword);
+        }
     }
 
     private void setupObservers() {
@@ -108,18 +119,14 @@ public class LoginActivity extends AppCompatActivity {
         // Observer for the login success event.
         viewModel.loginSuccess.observe(this, authResponse -> {
             if (authResponse != null) {
-                // Login was successful!
                 Toast.makeText(this, "Login Successful!", Toast.LENGTH_SHORT).show();
 
-                // Get the singleton instance of SessionManager and save the tokens.
                 SessionManager.getInstance().saveTokens(authResponse);
 
-                // Navigate to the MainActivity.
                 Intent intent = new Intent(LoginActivity.this, MainActivity.class);
-                // Clear the activity stack so the user can't press "back" to get to the login screen.
                 intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
                 startActivity(intent);
-                finish(); // Close the LoginActivity.
+                finish();
             }
         });
     }
@@ -127,18 +134,25 @@ public class LoginActivity extends AppCompatActivity {
     private void toggleMode() {
         isLoginMode = !isLoginMode;
 
+        textInputLayoutUsername.setError(null);
+        textInputLayoutEmail.setError(null);
+        textInputLayoutPassword.setError(null);
+        textInputLayoutConfirmPassword.setError(null);
+
         if (isLoginMode) {
-            // UI changes for LOGIN mode
-            textInputLayoutUsername.setHint("Username or Email");
+            // --- THIS IS THE KEY UI CHANGE ---
+            // UI for LOGIN mode
+            textInputLayoutUsername.setHint("Username or Email"); // New Hint
+            editTextUsername.setInputType(android.text.InputType.TYPE_CLASS_TEXT); // Use generic text
+            textInputLayoutEmail.setVisibility(View.GONE);
             textInputLayoutConfirmPassword.setVisibility(View.GONE);
             buttonAction.setText("Log In");
             textViewSwitchMode.setText("Don't have an account? Sign Up");
         } else {
-            // UI changes for REGISTER mode
-            // In register mode, the first field must be the username.
+            // UI for REGISTER mode
             textInputLayoutUsername.setHint("Username");
-            // We need a separate email field in a real app, but for now we'll reuse.
-            // A better UI would have three fields in register mode.
+            editTextUsername.setInputType(android.text.InputType.TYPE_CLASS_TEXT);
+            textInputLayoutEmail.setVisibility(View.VISIBLE);
             textInputLayoutConfirmPassword.setVisibility(View.VISIBLE);
             buttonAction.setText("Register");
             textViewSwitchMode.setText("Already have an account? Sign In");

@@ -30,15 +30,16 @@ public class AuthRepository {
         void onError(String message);
     }
 
-    public void login(String email, String password, AuthCallback<AuthResponse> callback) {
-        LoginRequest loginRequest = new LoginRequest(email, password);
+    public void login(String loginIdentifier, String password, AuthCallback<AuthResponse> callback) {
+        // Use the updated LoginRequest object.
+        LoginRequest loginRequest = new LoginRequest(loginIdentifier, password);
         apiService.login(loginRequest).enqueue(new Callback<AuthResponse>() {
+            // ... the rest of the method is exactly the same ...
             @Override
             public void onResponse(Call<AuthResponse> call, Response<AuthResponse> response) {
                 if (response.isSuccessful() && response.body() != null) {
                     callback.onSuccess(response.body());
                 } else {
-                    // Try to parse the error body for a more specific message.
                     try {
                         if (response.errorBody() != null) {
                             callback.onError("Login failed: " + response.errorBody().string());
