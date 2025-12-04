@@ -8,11 +8,6 @@ import retrofit2.Retrofit;
 import retrofit2.converter.gson.GsonConverterFactory;
 
 public class RetrofitClient {
-
-    // The BASE_URL needs a 'Context' to read it
-    // from the generated string resources. It will be defined inside the methods.
-
-    // The singleton instance of main, configured Retrofit object.
     private static Retrofit retrofit = null;
 
     /**
@@ -33,20 +28,20 @@ public class RetrofitClient {
             HttpLoggingInterceptor loggingInterceptor = new HttpLoggingInterceptor();
             loggingInterceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
 
-            // 2. Set up our custom interceptor to add the auth token to headers.
+            // 2. Set up custom interceptor to add the auth token to headers.
             AuthInterceptor authInterceptor = new AuthInterceptor(context);
 
-            // 3. Set up our custom authenticator to handle 401 errors and refresh the token.
+            // 3. Set up custom authenticator to handle 401 errors and refresh the token.
             TokenAuthenticator tokenAuthenticator = new TokenAuthenticator(context);
 
-            // 4. Build the OkHttpClient, adding all our components.
+            // 4. Build the OkHttpClient, adding all components.
             OkHttpClient client = new OkHttpClient.Builder()
                 .addInterceptor(authInterceptor)      // Runs first to add the token.
                 .addInterceptor(loggingInterceptor)  // Runs second to log the request with the token.
-                .authenticator(tokenAuthenticator)   // Runs ONLY if the server returns a 4-01 error.
+                .authenticator(tokenAuthenticator)   // Runs ONLY if the server returns a 401 error.
                 .build();
 
-            // 5. Build the Retrofit instance using our custom client.
+            // 5. Build the Retrofit instance using custom client.
             retrofit = new Retrofit.Builder()
                 .baseUrl(BASE_URL)
                 .client(client)

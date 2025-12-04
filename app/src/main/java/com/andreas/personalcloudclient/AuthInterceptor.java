@@ -29,13 +29,13 @@ public class AuthInterceptor implements Interceptor {
         // 2. Get the access token from SessionManager.
         String accessToken = sessionManager.getAccessToken();
 
-        // 3. If we don't have a token, proceed with the original request.
+        // 3. If not an existing token, proceed with the original request.
         //    This is important for requests like login/register that don't need a token.
         if (accessToken == null) {
             return chain.proceed(originalRequest);
         }
 
-        // 4. If we DO have a token, build a new request.
+        // 4. If a token exists, build a new request.
         Request.Builder builder = originalRequest.newBuilder()
             // Add the Authorization header with the "Bearer" prefix.
             .header("Authorization", "Bearer " + accessToken);

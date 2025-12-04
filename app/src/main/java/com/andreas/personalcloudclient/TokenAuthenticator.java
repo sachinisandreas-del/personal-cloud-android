@@ -36,15 +36,15 @@ public class TokenAuthenticator implements Authenticator {
         // 1. Get the refresh token from our session manager.
         final String refreshToken = sessionManager.getRefreshToken();
 
-        // If we don't have a refresh token, we can't do anything.
+        // If we there is not a refresh token, can't do anything.
         // The user must log in from scratch.
         if (refreshToken == null) {
             Log.d(TAG, "No refresh token available. Cannot authenticate.");
-            // TODO: Here you would navigate the user back to the LoginActivity.
+            // TODO: Here need navigate the user back to the LoginActivity.
             return null; // Null means "give up".
         }
 
-        // 2. We need to make a synchronous network call to the /token/refresh endpoint.
+        // 2. Need to make a synchronous network call to the /token/refresh endpoint.
         //    It MUST be synchronous to block the original request chain.
         ApiService apiService = RetrofitClient.getClient(context).create(ApiService.class);
         Map<String, String> body = new HashMap<>();

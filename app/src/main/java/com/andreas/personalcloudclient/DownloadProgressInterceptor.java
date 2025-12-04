@@ -68,7 +68,7 @@ public class DownloadProgressInterceptor implements Interceptor {
         private Source source(Source source) {
             return new ForwardingSource(source) {
                 long totalBytesRead = 0L;
-                Handler handler = new Handler(Looper.getMainLooper()); 
+                Handler handler = new Handler(Looper.getMainLooper());
 
                 @Override
                 public long read(@NonNull Buffer sink, long byteCount) throws IOException {
@@ -77,7 +77,6 @@ public class DownloadProgressInterceptor implements Interceptor {
                         totalBytesRead += bytesRead;
                         int progress = (int) ((totalBytesRead * 100) / responseBody.contentLength());
 
-                        // --- AND HERE ---
                         // Post the progress update to the main thread
                         handler.post(() -> progressListener.onProgressUpdate(progress));
                     }

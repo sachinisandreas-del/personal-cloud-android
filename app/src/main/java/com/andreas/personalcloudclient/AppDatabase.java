@@ -12,7 +12,7 @@ public abstract class AppDatabase extends RoomDatabase {
 
     private static volatile AppDatabase INSTANCE;
 
-    // This is a singleton pattern to ensure we only have one instance of the database.
+    // This is a singleton pattern to ensure only one instance of the database.
     public static AppDatabase getDatabase(final Context context) {
         if (INSTANCE == null) {
             synchronized (AppDatabase.class) {

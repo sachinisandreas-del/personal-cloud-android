@@ -29,7 +29,7 @@ public class FileMetadata {
     @SerializedName("modified_at")
     private String modifiedAt;
 
-    // --- IMPORTANT: Room needs an empty constructor ---
+    // --- Room needs an empty constructor ---
     public FileMetadata() {}
 
     // --- Getters and Setters (Room needs setters) ---

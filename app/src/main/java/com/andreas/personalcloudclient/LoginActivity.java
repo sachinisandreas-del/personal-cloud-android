@@ -110,8 +110,8 @@ public class LoginActivity extends AppCompatActivity {
         // Configure Google Sign-In to request the user's ID, email address, and basic profile.
         // ID and email are included in DEFAULT_SIGN_IN.
         GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-            // We request an ID token. The string passed here is your *Web application's*
-            // client ID from strings.xml. This is the crucial step that sets the 'audience'.
+            // Request an ID token. The string passed here is *Web application's*
+            // client ID from local.properties(.gitignored) This is the crucial step that sets the 'audience'.
             .requestIdToken(getString(R.string.google_web_client_id))
             .requestEmail()
             .build();
@@ -134,7 +134,7 @@ public class LoginActivity extends AppCompatActivity {
             String idToken = account.getIdToken();
             if (idToken != null) {
                 Log.d(TAG, "Google ID Token: " + idToken);
-                // Send the token to your ViewModel to be verified by your backend.
+                // Send the token to ViewModel to be verified by backend.
                 viewModel.loginWithGoogle(idToken);
             } else {
                 Toast.makeText(this, "Failed to get Google ID token.", Toast.LENGTH_LONG).show();
@@ -208,10 +208,9 @@ public class LoginActivity extends AppCompatActivity {
         textInputLayoutConfirmPassword.setError(null);
 
         if (isLoginMode) {
-            // --- THIS IS THE KEY UI CHANGE ---
             // UI for LOGIN mode
-            textInputLayoutUsername.setHint("Username or Email"); // New Hint
-            editTextUsername.setInputType(android.text.InputType.TYPE_CLASS_TEXT); // Use generic text
+            textInputLayoutUsername.setHint("Username or Email");
+            editTextUsername.setInputType(android.text.InputType.TYPE_CLASS_TEXT);
             textInputLayoutEmail.setVisibility(View.GONE);
             textInputLayoutConfirmPassword.setVisibility(View.GONE);
             buttonAction.setText("Log In");

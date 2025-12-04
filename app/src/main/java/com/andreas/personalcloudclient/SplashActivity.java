@@ -16,7 +16,7 @@ public class SplashActivity extends AppCompatActivity {
         SessionManager sessionManager = SessionManager.getInstance();
 
         Intent intent;
-        // Check if we have a saved access token.
+        // Check if there is a saved access token.
         if (sessionManager.getAccessToken() != null) {
             // If a token exists, the user is "logged in". Go to MainActivity.
             intent = new Intent(SplashActivity.this, MainActivity.class);

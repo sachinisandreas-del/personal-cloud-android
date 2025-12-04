@@ -46,7 +46,6 @@ public class LoginViewModel extends AndroidViewModel {
         _isLoading.setValue(true);
         // Pass the identifier to the repository.
         authRepository.login(loginIdentifier, password, new AuthRepository.AuthCallback<AuthResponse>() {
-            // ... the rest of the method is exactly the same ...
             @Override
             public void onSuccess(AuthResponse response) {
                 _isLoading.setValue(false);

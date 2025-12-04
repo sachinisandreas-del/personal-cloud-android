@@ -85,12 +85,11 @@ public class FileAdapter extends RecyclerView.Adapter<FileAdapter.FileViewHolder
 
         switch (file.getFileType()) {
             case "image":
-                // --- NEW AUTHENTICATED GLIDE LOGIC ---
 
-                // 1. Get the SessionManager to retrieve our token.
+                // 1. Get the SessionManager to retrieve token.
                 SessionManager sessionManager = SessionManager.getInstance();
 
-                // 2. Create a GlideUrl, which allows us to attach headers.
+                // 2. Create a GlideUrl, which allows to attach headers.
                 GlideUrl glideUrl = new GlideUrl(
                     baseUrl + "download/" + file.getFilename(),
                     new LazyHeaders.Builder()

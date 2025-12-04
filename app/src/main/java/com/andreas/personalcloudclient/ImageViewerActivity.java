@@ -16,7 +16,7 @@ public class ImageViewerActivity extends AppCompatActivity {
 
         ImageView imageView = findViewById(R.id.imageViewFull);
 
-        // Get the image URL that MainActivity passed to us
+        // Get the image URL that MainActivity passed
         String imageUrl = getIntent().getStringExtra(EXTRA_IMAGE_URL);
 
         if (imageUrl != null) {

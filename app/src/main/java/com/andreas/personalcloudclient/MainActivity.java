@@ -96,7 +96,7 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
         viewModel.isLoading.observe(this, isLoading -> {
             if (isLoading != null) {
                 // This 'if' condition prevents the big central progress bar from
-                // showing when you are using swipe-to-refresh.
+                // showing when using swipe-to-refresh.
                 if (!swipeRefreshLayout.isRefreshing()) {
                     findViewById(R.id.progressBar).setVisibility(isLoading ? View.VISIBLE : View.GONE);
                 }
@@ -207,7 +207,7 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
         String fileType = file.getFileType();
         String fileUrl = baseUrl + "download/" + filename;
 
-        // We check the file type to decide how to open it.
+        // Check the file type to decide how to open it.
         switch (fileType) {
             case "image":
                 // Use our dedicated full-screen image viewer for the best experience.
@@ -278,7 +278,7 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
     }
 
     private void openFileExternally(String filename) {
-        // Use the new public method to show the loading indicator.
+
         viewModel.setLoadingState(true);
 
         //Create a new instance of the repository to perform the one-off download.
@@ -286,7 +286,7 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
         fileRepository.downloadFileToCache(filename, new FileRepository.RepositoryCallback<File>() {
             @Override
             public void onSuccess(File file) {
-                // Use the public method to hide the loading indicator.
+
                 viewModel.setLoadingState(false);
 
                 String authority = "com.andreas.personalcloudclient.provider";
@@ -313,7 +313,6 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
 
             @Override
             public void onError(String message) {
-                // Use the new public method to hide the loading indicator.
                 viewModel.setLoadingState(false);
                 Toast.makeText(MainActivity.this, message, Toast.LENGTH_LONG).show();
             }

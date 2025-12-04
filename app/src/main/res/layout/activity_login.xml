@@ -43,7 +43,7 @@
             android:inputType="text" />
     </com.google.android.material.textfield.TextInputLayout>
 
-    <!-- Email Input Field (Starts GONE) -->
+    <!-- Email Input Field -->
     <com.google.android.material.textfield.TextInputLayout
         android:id="@+id/textInputLayoutEmail"
         style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
@@ -86,7 +86,7 @@
             android:inputType="textPassword" />
     </com.google.android.material.textfield.TextInputLayout>
 
-    <!-- Confirm Password Input Field (Starts GONE) -->
+    <!-- Confirm Password Input Field -->
     <com.google.android.material.textfield.TextInputLayout
         android:id="@+id/textInputLayoutConfirmPassword"
         style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"

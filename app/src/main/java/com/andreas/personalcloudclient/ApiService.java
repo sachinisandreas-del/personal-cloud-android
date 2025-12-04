@@ -25,7 +25,7 @@ public interface ApiService {
     @POST("login")
     Call<AuthResponse> login(@Body LoginRequest loginRequest);
 
-    // We send the Google token in a simple Map.
+    // Send the Google token in a simple Map.
     @POST("login/google")
     Call<AuthResponse> loginWithGoogle(@Body Map<String, String> googleToken);
 
