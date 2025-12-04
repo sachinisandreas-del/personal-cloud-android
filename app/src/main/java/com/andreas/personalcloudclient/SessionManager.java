@@ -19,7 +19,6 @@ public class SessionManager {
     }
 
     // The public method to get the singleton instance.
-    // We no longer need the context here.
     public static SessionManager getInstance() {
         if (INSTANCE == null) {
             synchronized (SessionManager.class) {

@@ -1,4 +1,4 @@
-package com.andreas.personalcloudclient; // Make sure this matches your package name
+package com.andreas.personalcloudclient;
 
 public interface DownloadProgressListener {
     void onProgressUpdate(int progress);

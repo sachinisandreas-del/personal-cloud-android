@@ -25,6 +25,12 @@ public class FileAdapter extends RecyclerView.Adapter<FileAdapter.FileViewHolder
     private Set<String> selectedItems = new HashSet<>();
     private OnFileClickListener listener;
 
+    private final String baseUrl;
+
+    public FileAdapter(String baseUrl) {
+        this.baseUrl = baseUrl;
+    }
+
     public interface OnFileClickListener {
         void onFileClicked(FileMetadata file);
         void onFileLongClicked(FileMetadata file);
@@ -86,7 +92,7 @@ public class FileAdapter extends RecyclerView.Adapter<FileAdapter.FileViewHolder
 
                 // 2. Create a GlideUrl, which allows us to attach headers.
                 GlideUrl glideUrl = new GlideUrl(
-                    RetrofitClient.BASE_URL + "download/" + file.getFilename(),
+                    baseUrl + "download/" + file.getFilename(),
                     new LazyHeaders.Builder()
                         // Add the Authorization header.
                         .addHeader("Authorization", "Bearer " + sessionManager.getAccessToken())

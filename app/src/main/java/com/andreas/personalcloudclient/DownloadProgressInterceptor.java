@@ -1,4 +1,4 @@
-package com.andreas.personalcloudclient; // Make sure this matches your package name
+package com.andreas.personalcloudclient;
 
 import android.os.Handler;
 import android.os.Looper;
@@ -68,7 +68,7 @@ public class DownloadProgressInterceptor implements Interceptor {
         private Source source(Source source) {
             return new ForwardingSource(source) {
                 long totalBytesRead = 0L;
-                Handler handler = new Handler(Looper.getMainLooper()); // <-- THE FIX IS HERE
+                Handler handler = new Handler(Looper.getMainLooper()); 
 
                 @Override
                 public long read(@NonNull Buffer sink, long byteCount) throws IOException {

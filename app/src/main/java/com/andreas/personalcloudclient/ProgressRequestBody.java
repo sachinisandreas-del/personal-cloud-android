@@ -1,4 +1,4 @@
-package com.andreas.personalcloudclient; // Make sure this matches your package name
+package com.andreas.personalcloudclient;
 
 import android.os.Handler;
 import android.os.Looper;
@@ -26,7 +26,7 @@ public class ProgressRequestBody extends RequestBody {
 
     @Override
     public MediaType contentType() {
-        // We can guess the media type from the file, or use a generic one
+        // Can guess the media type from the file, or use a generic one
         return MediaType.parse("application/octet-stream");
     }
 

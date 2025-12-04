@@ -16,7 +16,7 @@ public class AuthInterceptor implements Interceptor {
     private final SessionManager sessionManager;
 
     public AuthInterceptor(Context context) {
-        // Get the singleton instance of our SessionManager.
+        // Get the singleton instance of SessionManager.
         this.sessionManager = SessionManager.getInstance();
     }
 
@@ -26,7 +26,7 @@ public class AuthInterceptor implements Interceptor {
         // 1. Get the original request from the chain.
         Request originalRequest = chain.request();
 
-        // 2. Get the access token from our SessionManager.
+        // 2. Get the access token from SessionManager.
         String accessToken = sessionManager.getAccessToken();
 
         // 3. If we don't have a token, proceed with the original request.

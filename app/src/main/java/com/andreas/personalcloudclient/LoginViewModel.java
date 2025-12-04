@@ -92,7 +92,28 @@ public class LoginViewModel extends AndroidViewModel {
         });
     }
 
+    public void loginWithGoogle(String googleToken) {
+        _isLoading.setValue(true); // Start loading
+
+        authRepository.loginWithGoogle(googleToken, new AuthRepository.AuthCallback<AuthResponse>() {
+            @Override
+            public void onSuccess(AuthResponse response) {
+                _isLoading.setValue(false); // Stop loading
+                _loginSuccess.setValue(response); // Signal success
+                Log.d(TAG, "Google Sign-In successful.");
+            }
+
+            @Override
+            public void onError(String message) {
+                _isLoading.setValue(false); // Stop loading
+                _toastMessage.setValue(message); // Show error
+                Log.e(TAG, "Google Sign-In error: " + message);
+            }
+        });
+    }
+
     public void onToastMessageShown() {
         _toastMessage.setValue(null);
     }
+
 }

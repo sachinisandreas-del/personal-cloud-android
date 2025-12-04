@@ -160,4 +160,8 @@ public class FileListViewModel extends AndroidViewModel {
         _selectedItems.setValue(allFilenames);
         _isSelectionModeActive.setValue(true);
     }
+
+    public void setLoadingState(boolean isLoading) {
+        _isLoading.setValue(isLoading);
+    }
 }

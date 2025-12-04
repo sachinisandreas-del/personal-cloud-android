@@ -31,10 +31,9 @@ public class AuthRepository {
     }
 
     public void login(String loginIdentifier, String password, AuthCallback<AuthResponse> callback) {
-        // Use the updated LoginRequest object.
+
         LoginRequest loginRequest = new LoginRequest(loginIdentifier, password);
         apiService.login(loginRequest).enqueue(new Callback<AuthResponse>() {
-            // ... the rest of the method is exactly the same ...
             @Override
             public void onResponse(Call<AuthResponse> call, Response<AuthResponse> response) {
                 if (response.isSuccessful() && response.body() != null) {
@@ -81,6 +80,36 @@ public class AuthRepository {
 
             @Override
             public void onFailure(Call<ResponseBody> call, Throwable t) {
+                callback.onError("Network error: " + t.getMessage());
+            }
+        });
+    }
+    public void loginWithGoogle(String googleToken, AuthCallback<AuthResponse> callback) {
+        //Create a simple Map to build the JSON body: {"google_token": "..."}
+        Map<String, String> body = new HashMap<>();
+        body.put("google_token", googleToken);
+
+        apiService.loginWithGoogle(body).enqueue(new Callback<AuthResponse>() {
+            @Override
+            public void onResponse(Call<AuthResponse> call, Response<AuthResponse> response) {
+                if (response.isSuccessful() && response.body() != null) {
+                    callback.onSuccess(response.body());
+                } else {
+                    try {
+                        if (response.errorBody() != null) {
+                            // Can add specific handling for the "account_exists_with_password" error here later.
+                            callback.onError("Google Sign-In failed: " + response.errorBody().string());
+                        } else {
+                            callback.onError("Google Sign-In failed with code: " + response.code());
+                        }
+                    } catch (IOException e) {
+                        callback.onError("Google Sign-In failed with code: " + response.code());
+                    }
+                }
+            }
+
+            @Override
+            public void onFailure(Call<AuthResponse> call, Throwable t) {
                 callback.onError("Network error: " + t.getMessage());
             }
         });

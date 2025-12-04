@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
-
     <!-- Permissions required by the application -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -17,38 +16,43 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.PersonalCloudClient"
-        tools:targetApi="31"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="true"
+        tools:targetApi="31">
 
-        <!-- SplashActivity is now the main entry point of the application.
-             It has no UI and its only job is to route the user to the correct screen. -->
+        <!--
+         SplashActivity is now the main entry point of the application.
+             It has no UI and its only job is to route the user to the correct screen.
+        -->
         <activity
             android:name=".SplashActivity"
             android:exported="true"
             android:theme="@style/Theme.AppCompat.NoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
+
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
-
-        <!-- LoginActivity is now an internal activity, launched by SplashActivity. -->
+        </activity> <!-- LoginActivity is an internal activity, launched by SplashActivity. -->
         <activity
             android:name=".LoginActivity"
-            android:exported="false" />
-
-        <!-- MainActivity is an internal activity, launched by Splash or Login. -->
+            android:exported="false" /> <!-- MainActivity is an internal activity, launched by Splash or Login. -->
         <activity
             android:name=".MainActivity"
-            android:exported="false" />
-
-        <!-- ImageViewerActivity is an internal activity, launched by MainActivity. -->
+            android:exported="false" /> <!-- ImageViewerActivity is an internal activity, launched by MainActivity. -->
         <activity
             android:name=".ImageViewerActivity"
             android:exported="false"
             android:theme="@style/Theme.AppCompat.NoActionBar" />
 
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.provider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/provider_paths" />
+        </provider>
     </application>
 
 </manifest>
-

@@ -1,22 +1,33 @@
 package com.andreas.personalcloudclient;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.lifecycle.ViewModelProvider;
 
+import android.app.Activity;
 import android.content.Intent;
 import android.os.Bundle;
-import android.util.Patterns;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.google.android.gms.auth.api.signin.GoogleSignIn;
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
+import com.google.android.gms.auth.api.signin.GoogleSignInClient;
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
+import com.google.android.gms.common.api.ApiException;
+import com.google.android.gms.tasks.Task;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 
 public class LoginActivity extends AppCompatActivity {
+
+    private static final String TAG = "LoginActivity";
 
     private boolean isLoginMode = true;
 
@@ -34,18 +45,36 @@ public class LoginActivity extends AppCompatActivity {
     private TextView textViewSwitchMode;
     private ProgressBar progressBar;
 
-    // ViewModel Reference
     private LoginViewModel viewModel;
+
+    // --- Google Sign-In Components ---
+    private GoogleSignInClient mGoogleSignInClient;
+    private ActivityResultLauncher<Intent> googleSignInLauncher;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_login);
 
-        // --- Get the ViewModel instance ---
         viewModel = new ViewModelProvider(this).get(LoginViewModel.class);
 
-        // --- Find all the views ---
+        // --- Configure Google Sign-In ---
+        configureGoogleSignIn();
+
+        // --- Register the ActivityResultLauncher for Google Sign-In ---
+        googleSignInLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (result.getResultCode() == Activity.RESULT_OK) {
+                    // The Task returned from this call is always completed, no need to attach a listener.
+                    Task<GoogleSignInAccount> task = GoogleSignIn.getSignedInAccountFromIntent(result.getData());
+                    handleGoogleSignInResult(task);
+                } else {
+                    Toast.makeText(this, "Google Sign In cancelled.", Toast.LENGTH_SHORT).show();
+                }
+            });
+
+        // --- Find views ---
         textInputLayoutUsername = findViewById(R.id.textInputLayoutUsername);
         editTextUsername = findViewById(R.id.editTextUsername);
         textInputLayoutEmail = findViewById(R.id.textInputLayoutEmail);
@@ -59,24 +88,63 @@ public class LoginActivity extends AppCompatActivity {
         textViewSwitchMode = findViewById(R.id.textViewSwitchMode);
         progressBar = findViewById(R.id.progressBarLogin);
 
-        // --- Set up the click listeners ---
+        // --- Set up click listeners ---
         buttonAction.setOnClickListener(v -> handleAuthAction());
 
         buttonSignInWithGoogle.setOnClickListener(v -> {
-            Toast.makeText(this, "Google Sign-In coming soon!", Toast.LENGTH_SHORT).show();
+            // --- Start the Google Sign-In flow ---
+            signInWithGoogle();
         });
 
-        textViewSwitchMode.setOnClickListener(v -> {
-            toggleMode();
-        });
+        textViewSwitchMode.setOnClickListener(v -> toggleMode());
 
-        // --- Set up observers for LiveData ---
         setupObservers();
 
-        // --- Initial UI state setup ---
-        toggleMode(); // Call this once to set the initial state correctly
-        isLoginMode = false; // so that the first toggle makes it true
+        // Initial UI state setup
         toggleMode();
+        isLoginMode = false;
+        toggleMode();
+    }
+
+    private void configureGoogleSignIn() {
+        // Configure Google Sign-In to request the user's ID, email address, and basic profile.
+        // ID and email are included in DEFAULT_SIGN_IN.
+        GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            // We request an ID token. The string passed here is your *Web application's*
+            // client ID from strings.xml. This is the crucial step that sets the 'audience'.
+            .requestIdToken(getString(R.string.google_web_client_id))
+            .requestEmail()
+            .build();
+
+        // Build a GoogleSignInClient with the options specified by gso.
+        mGoogleSignInClient = GoogleSignIn.getClient(this, gso);
+    }
+
+    private void signInWithGoogle() {
+        // Launch the Google Sign-In activity.
+        Intent signInIntent = mGoogleSignInClient.getSignInIntent();
+        googleSignInLauncher.launch(signInIntent);
+    }
+
+    private void handleGoogleSignInResult(Task<GoogleSignInAccount> completedTask) {
+        try {
+            GoogleSignInAccount account = completedTask.getResult(ApiException.class);
+
+            // Signed in successfully, get the ID token.
+            String idToken = account.getIdToken();
+            if (idToken != null) {
+                Log.d(TAG, "Google ID Token: " + idToken);
+                // Send the token to your ViewModel to be verified by your backend.
+                viewModel.loginWithGoogle(idToken);
+            } else {
+                Toast.makeText(this, "Failed to get Google ID token.", Toast.LENGTH_LONG).show();
+            }
+
+        } catch (ApiException e) {
+            // The ApiException status code indicates the detailed failure reason.
+            Log.w(TAG, "signInResult:failed code=" + e.getStatusCode());
+            Toast.makeText(this, "Google Sign In failed. Code: " + e.getStatusCode(), Toast.LENGTH_LONG).show();
+        }
     }
 
     private void handleAuthAction() {

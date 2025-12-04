@@ -3,6 +3,13 @@ plugins {
 }
 
 android {
+  // This block reads the values from local.properties file.
+  def localProperties = new Properties()
+  def localPropertiesFile = rootProject.file('local.properties')
+  if (localPropertiesFile.exists()) {
+    localProperties.load(new FileInputStream(localPropertiesFile))
+  }
+
   namespace 'com.andreas.personalcloudclient'
   compileSdk 34
 
@@ -14,6 +21,15 @@ android {
     versionName "1.0"
 
     testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+    // --- SOLUTION 2: Using resValue ---
+    // This takes the value from local.properties and generates a string resource.
+    // This is a reliable alternative if buildConfigField fails.
+    def googleClientId = localProperties.getProperty('GOOGLE_WEB_CLIENT_ID', 'MISSING_IN_LOCAL_PROPERTIES')
+    def apiBaseUrl = localProperties.getProperty('API_BASE_URL', 'http://127.0.0.1:5000/')
+
+    resValue "string", "google_web_client_id", "\"${googleClientId}\""
+    resValue "string", "api_base_url", "\"${apiBaseUrl}\""
   }
 
   buildTypes {

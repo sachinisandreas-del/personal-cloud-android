@@ -2,6 +2,7 @@ package com.andreas.personalcloudclient;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.FileProvider;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -23,6 +24,8 @@ import android.widget.Button;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import java.io.File;
 import java.util.Set;
 
 public class MainActivity extends AppCompatActivity implements FileAdapter.OnFileClickListener {
@@ -31,11 +34,11 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
     private FileAdapter fileAdapter;
     private ActionMode actionMode;
     private SwipeRefreshLayout swipeRefreshLayout;
-
-    // --- NEW CLASS MEMBERS ---
     private RecyclerView recyclerView;
     private boolean isGridLayout = true; // To track the current layout state
     private MenuItem toggleLayoutMenuItem; // To change the icon dynamically
+
+    private String baseUrl;
 
     private final ActivityResultLauncher<Intent> filePickerLauncher = registerForActivityResult(
         new ActivityResultContracts.StartActivityForResult(),
@@ -54,6 +57,7 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
 
         viewModel = new ViewModelProvider(this, ViewModelProvider.AndroidViewModelFactory.getInstance(getApplication())).get(FileListViewModel.class);
 
+        baseUrl = getString(R.string.api_base_url);
         setupUI();
         setupObservers();
 
@@ -63,10 +67,10 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
     private void setupUI() {
 
         swipeRefreshLayout = findViewById(R.id.swipeRefreshLayout);
-        // --- MODIFIED: Assign recyclerView to the class member ---
         recyclerView = findViewById(R.id.recyclerViewFiles);
 
-        fileAdapter = new FileAdapter();
+        fileAdapter = new FileAdapter(baseUrl);
+
         recyclerView.setAdapter(fileAdapter);
         // Start with a Grid Layout
         recyclerView.setLayoutManager(new GridLayoutManager(this, 2));
@@ -132,7 +136,7 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
         });
     }
 
-    // --- NEW: Inflate the options menu from XML ---
+    // --- Inflate the options menu from XML ---
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         getMenuInflater().inflate(R.menu.main_menu, menu);
@@ -141,7 +145,7 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
         return true;
     }
 
-    // --- NEW: Handle clicks on menu items ---
+    // --- Handle clicks on menu items ---
     @Override
     public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         int id = item.getItemId();
@@ -164,7 +168,7 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
         return super.onOptionsItemSelected(item);
     }
 
-    // --- NEW: Logic to switch between Grid and List layout ---
+    // --- Logic to switch between Grid and List layout ---
     private void toggleLayout() {
         if (isGridLayout) {
             // Switch to Linear Layout
@@ -201,21 +205,31 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
     private void viewFile(FileMetadata file) {
         String filename = file.getFilename();
         String fileType = file.getFileType();
-        String fileUrl = RetrofitClient.BASE_URL + "download/" + filename;
+        String fileUrl = baseUrl + "download/" + filename;
 
-        if ("image".equals(fileType)) {
-            Intent intent = new Intent(this, ImageViewerActivity.class);
-            intent.putExtra(ImageViewerActivity.EXTRA_IMAGE_URL, fileUrl);
-            startActivity(intent);
-        } else {
-            String streamUrl = fileUrl + "?view=true";
-            Intent intent = new Intent(Intent.ACTION_VIEW);
-            intent.setData(Uri.parse(streamUrl));
-            try {
-                startActivity(intent);
-            } catch (ActivityNotFoundException e) {
-                Toast.makeText(this, "No app found to open this file type", Toast.LENGTH_LONG).show();
-            }
+        // We check the file type to decide how to open it.
+        switch (fileType) {
+            case "image":
+                // Use our dedicated full-screen image viewer for the best experience.
+                Intent imageIntent = new Intent(this, ImageViewerActivity.class);
+                imageIntent.putExtra(ImageViewerActivity.EXTRA_IMAGE_URL, fileUrl);
+                startActivity(imageIntent);
+                break;
+
+            case "video":
+            case "pdf":
+            case "text":
+                // For all other viewable types, use the new external app method.
+                openFileExternally(filename);
+                break;
+
+            default:
+                // For all other types (archives, generic, etc.), use the
+                // "download-then-open" strategy.
+                Toast.makeText(this, "Preparing to download '" + filename + "'...", Toast.LENGTH_SHORT).show();
+                viewModel.downloadFile(filename);
+                // NOTE: This won't open the file automatically after download yet.
+                break;
         }
     }
 
@@ -261,5 +275,48 @@ public class MainActivity extends AppCompatActivity implements FileAdapter.OnFil
         intent.setType("*/*");
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         filePickerLauncher.launch(intent);
+    }
+
+    private void openFileExternally(String filename) {
+        // Use the new public method to show the loading indicator.
+        viewModel.setLoadingState(true);
+
+        //Create a new instance of the repository to perform the one-off download.
+        FileRepository fileRepository = new FileRepository(getApplication());
+        fileRepository.downloadFileToCache(filename, new FileRepository.RepositoryCallback<File>() {
+            @Override
+            public void onSuccess(File file) {
+                // Use the public method to hide the loading indicator.
+                viewModel.setLoadingState(false);
+
+                String authority = "com.andreas.personalcloudclient.provider";
+
+                // Get the secure content:// URI from FileProvider.
+                Uri fileUri = FileProvider.getUriForFile(
+                    MainActivity.this,
+                    authority,
+                    file
+                );
+
+                // Create the Intent to view the file.
+                Intent viewIntent = new Intent(Intent.ACTION_VIEW);
+                viewIntent.setData(fileUri);
+                viewIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+                try {
+                    startActivity(viewIntent);
+                } catch (ActivityNotFoundException e) {
+                    // This happens if the user has no app that can open the file type.
+                    Toast.makeText(MainActivity.this, "No app found to open this file type.", Toast.LENGTH_LONG).show();
+                }
+            }
+
+            @Override
+            public void onError(String message) {
+                // Use the new public method to hide the loading indicator.
+                viewModel.setLoadingState(false);
+                Toast.makeText(MainActivity.this, message, Toast.LENGTH_LONG).show();
+            }
+        });
     }
 }

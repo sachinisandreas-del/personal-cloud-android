@@ -17,7 +17,7 @@ import retrofit2.http.Streaming;
 
 public interface ApiService {
 
-    // --- NEW AUTHENTICATION ENDPOINTS ---
+    // --- AUTHENTICATION ENDPOINTS ---
 
     @POST("register")
     Call<ResponseBody> register(@Body RegisterRequest registerRequest);
@@ -33,8 +33,8 @@ public interface ApiService {
     Call<AuthResponse> refreshToken(@Body Map<String, String> refreshToken);
 
 
-    // --- UPDATED FILE OPERATION ENDPOINTS ---
-    // All of these now require an Authorization header.
+    // --- FILE OPERATION ENDPOINTS ---
+    // All of these require an Authorization header.
 
     @GET("files")
     Call<List<FileMetadata>> getFiles();

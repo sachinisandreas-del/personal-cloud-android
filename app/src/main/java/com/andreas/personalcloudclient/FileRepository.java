@@ -17,6 +17,8 @@ import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 import android.util.Log;
 import android.webkit.MimeTypeMap;
+import android.widget.Toast;
+
 import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
@@ -134,7 +136,7 @@ public class FileRepository {
         String originalFileName = getFileNameFromUri(fileUri);
         final int notificationId = (int) System.currentTimeMillis();
         final NotificationManagerCompat notificationManager = NotificationManagerCompat.from(context);
-        final NotificationCompat.Builder builder = new NotificationCompat.Builder(context, "personal_cloud_downloads")
+        final NotificationCompat.Builder builder = new NotificationCompat.Builder(context, "upload_channel")
             .setContentTitle(originalFileName)
             .setContentText("Upload starting...")
             .setSmallIcon(android.R.drawable.stat_sys_upload)
@@ -193,7 +195,7 @@ public class FileRepository {
 
         final int notificationId = (int) System.currentTimeMillis();
         final NotificationManagerCompat notificationManager = NotificationManagerCompat.from(context);
-        final NotificationCompat.Builder builder = new NotificationCompat.Builder(context, "personal_cloud_downloads")
+        final NotificationCompat.Builder builder = new NotificationCompat.Builder(context, "download_channel")
             .setContentTitle(filename)
             .setContentText("Download starting...")
             .setSmallIcon(android.R.drawable.stat_sys_download)
@@ -207,7 +209,7 @@ public class FileRepository {
             }
         };
 
-        ApiService downloadService = RetrofitClient.getDownloadApiService(progressListener);
+        ApiService downloadService = RetrofitClient.getDownloadApiService(context,progressListener);
 
         if (ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
             notificationManager.notify(notificationId, builder.build());
@@ -249,6 +251,53 @@ public class FileRepository {
                     notificationManager.notify(notificationId, builder.build());
                 }
                 callback.onError("Download error: " + t.getMessage());
+            }
+        });
+    }
+    public void downloadFileToCache(String filename, RepositoryCallback<File> callback) {
+        if (!isNetworkAvailable()) {
+            callback.onError("Offline: Cannot open file.");
+            return;
+        }
+
+        new Handler(Looper.getMainLooper()).post(() ->
+            Toast.makeText(context, "Preparing to open " + filename, Toast.LENGTH_SHORT).show()
+        );
+
+        ApiService downloadService = RetrofitClient.getDownloadApiService(context, null); // No progress listener needed for this simple download.
+
+        downloadService.downloadFile(filename).enqueue(new Callback<ResponseBody>() {
+            @Override
+            public void onResponse(@NonNull Call<ResponseBody> call, @NonNull Response<ResponseBody> response) {
+                if (response.isSuccessful() && response.body() != null) {
+                    // Run the file writing on a background thread.
+                    executor.execute(() -> {
+                        // Create a file in app's private cache directory.
+                        File cacheFile = new File(context.getCacheDir(), filename);
+                        try (InputStream inputStream = response.body().byteStream();
+                             OutputStream outputStream = new FileOutputStream(cacheFile)) {
+
+                            byte[] buffer = new byte[4096];
+                            int bytesRead;
+                            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                                outputStream.write(buffer, 0, bytesRead);
+                            }
+                            // Report success on the main thread, returning the File object.
+                            new Handler(Looper.getMainLooper()).post(() -> callback.onSuccess(cacheFile));
+
+                        } catch (IOException e) {
+                            Log.e(TAG, "Failed to save file to cache", e);
+                            new Handler(Looper.getMainLooper()).post(() -> callback.onError("Failed to open file."));
+                        }
+                    });
+                } else {
+                    callback.onError("Failed to download file. Code: " + response.code());
+                }
+            }
+
+            @Override
+            public void onFailure(@NonNull Call<ResponseBody> call, @NonNull Throwable t) {
+                callback.onError("Network error while opening file: " + t.getMessage());
             }
         });
     }
